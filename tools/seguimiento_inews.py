@@ -55,6 +55,11 @@ ESCRITURA = re.compile(r"create|save|lock|delete|send|move|update|put|insert|rem
 CAMPOS = ("page-number", "title")
 
 
+def formato(v):
+    """xsd:boolean solo admite true/false en minúsculas."""
+    return ("true" if v else "false") if isinstance(v, bool) else str(v)
+
+
 def local(el):
     return el.tag.rsplit("}", 1)[-1] if isinstance(el.tag, str) else ""
 
@@ -94,7 +99,7 @@ class Cliente:
     def llamar(self, servicio, operacion, campos=(), guardar=False):
         if operacion not in self.permitidas:
             raise PermissionError(f"Operación no permitida en esta prueba: {operacion}")
-        cuerpo = "".join(f"<t:{k}>{escape(str(v))}</t:{k}>" for k, v in campos)
+        cuerpo = "".join(f"<t:{k}>{escape(formato(v))}</t:{k}>" for k, v in campos)
         sobre = (f'<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="{SOAP_ENV}" xmlns:t="{NS[servicio]}">'
                  f"<s:Body><t:{operacion}>{cuerpo}</t:{operacion}></s:Body></s:Envelope>")
         req = urllib.request.Request(f"{self.base}/inews{servicio}", data=sobre.encode("utf-8"), method="POST",
