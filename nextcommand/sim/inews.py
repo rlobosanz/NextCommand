@@ -80,6 +80,7 @@ class SimStory:
 class SimSession:
     connected: bool = False
     queue: str | None = None
+    deny_left: int = 0
     pos: int = 0
     records_pos: int = 0
 
@@ -89,6 +90,8 @@ class SimState:
     queues: dict[str, list[SimStory]] = field(default_factory=dict)
     sessions: dict[str, SimSession] = field(default_factory=dict)
     calls: list[str] = field(default_factory=list)
+    # Pruebas: cuántas llamadas (sin contar IsConnected) se niegan con «permiso» justo tras cada Connect.
+    deny_after_connect: int = 0
 
     def set_video_id(self, queue: str, index: int, video_id: str) -> None:
         self.set_field(queue, index, "video-id", video_id)
@@ -202,9 +205,15 @@ def create_simulator(state: SimState | None = None) -> FastAPI:
             if arg("Password") != PASSWORD:
                 return fault("ConnectionFault", "Invalid user name or password", service)
             sess.connected = True
+            sess.deny_left = state.deny_after_connect
             return soap("")
         if not sess.connected:
             return fault("ConnectionFault", "Not connected", service)
+        if sess.deny_left and op not in ("IsConnected", "Disconnect"):
+            sess.deny_left -= 1
+            return fault(f"{op}Fault", "Access denied", service)
+        if op == "IsConnected":
+            return resp(op, service, "<IsConnected>true</IsConnected>")
         if op == "Disconnect":
             sess.connected = False
             return soap("")

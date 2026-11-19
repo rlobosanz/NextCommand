@@ -1,5 +1,11 @@
 # Cambios
 
+## v0.2.1 — 2026-11-19
+
+- Inicio de sesión en iNEWS: tras `Connect` se confirma la sesión con `IsConnected` antes de la primera llamada, y un «sin permiso» en los 15 s siguientes a conectar se reintenta una vez tras 1 s. Arregla el «Tu usuario no tiene permiso» del primer intento que obligaba a conectar dos veces (mismo arreglo que iNewsBrowser v0.1.1).
+- Un fallo de `Connect` ya nunca se presenta como «sin permiso».
+- Los faults de iNEWS se escriben en el registro del contenedor, y los avisos «sin permiso» y «error de iNEWS» muestran el texto original de iNEWS.
+
 ## v0.2.0 — 2026-11-19
 
 - Seguimiento de la escaleta abierta casi en tiempo real (cada 2 s, `NC_FOLLOW_INTERVAL`; 0 lo desactiva). iNEWS no empuja cambios: NextCommand compara los QueueRecords (localizador, StoryID, MTime) y relee solo la cabecera de lo que cambió. Altas, bajas, movimientos, VideoID, título, página, flotadas y retenidas; los cambios solo de texto no tocan la escaleta.

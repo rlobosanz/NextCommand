@@ -47,7 +47,8 @@ function feedback(text, bad = false) {
 }
 function errorText(e) {
   const key = "err." + (e.code || "")
-  return STRINGS[getLang()][key] ? t(key) : (e.message || t("err.generic"))
+  const text = STRINGS[getLang()][key] ? t(key) : (e.message || t("err.generic"))
+  return ["forbidden", "inews_error"].includes(e.code) && e.detail ? `${text} (iNEWS: ${e.detail})` : text
 }
 
 async function api(method, path, body) {
@@ -57,7 +58,7 @@ async function api(method, path, body) {
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null
-  if (!res.ok) throw Object.assign(new Error(data?.message || res.statusText), { code: data?.code, status: res.status })
+  if (!res.ok) throw Object.assign(new Error(data?.message || res.statusText), { code: data?.code, status: res.status, detail: data?.detail })
   return data
 }
 async function act(method, path, body, okText = "") {

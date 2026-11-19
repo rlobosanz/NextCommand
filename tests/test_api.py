@@ -9,7 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from nextcommand.api import DemoSimulator, create_app  # noqa: E402
+from nextcommand import inews_service  # noqa: E402
 from nextcommand.config import Settings  # noqa: E402
+from nextcommand.inews.soap import InewsFault  # noqa: E402
 
 H = {"X-Requested-By": "nextcommand", "X-Client-Id": "client-one-0001"}
 H2 = {"X-Requested-By": "nextcommand", "X-Client-Id": "client-two-0002"}
@@ -116,10 +118,37 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         state = (await self.http.get("/api/state", headers=H)).json()
         self.assertEqual(next(r for r in state["rows"] if r["key"] == key)["marks"], [10, 200])
 
+    async def test_permission_denied_right_after_connect_is_retried(self):
+        # iNEWS real: la primera llamada tras Connect puede volver con «sin permiso» y la segunda va bien.
+        inews_service.FRESH_RETRY_S = 0.0
+        sim = self.sim.inews_app.state.sim
+        sim.deny_after_connect = 1
+        await self.post("/api/control/claim", {})
+        r = await self.post("/api/inews/login", {"server": "SIM", "user": "ana", "password": "demo"})
+        self.assertEqual(r.status_code, 200, r.text)
+        r = await self.http.get("/api/inews/tree", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.json()["children"])
+        self.assertEqual(sim.calls[:2], ["Connect", "IsConnected"])
+
+    async def test_real_permission_error_still_403(self):
+        inews_service.FRESH_RETRY_S = 0.0
+        sim = self.sim.inews_app.state.sim
+        sim.deny_after_connect = 2
+        await self.post("/api/control/claim", {})
+        await self.post("/api/inews/login", {"server": "SIM", "user": "ana", "password": "demo"})
+        r = await self.http.get("/api/inews/tree", headers=H)
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["code"], "forbidden")
+
+    def test_connect_fault_is_never_forbidden(self):
+        e = InewsFault("Connect", "Fault", "Access denied for user")
+        self.assertNotEqual(inews_service.map_fault(e).code, "forbidden")
+
     async def test_never_calls_forbidden_inews_ops(self):
         await self.login_and_read()
-        allowed = {"Connect", "Disconnect", "GetFolderChildren", "GetQueuesForm", "SetCurrentQueue", "GetStories",
-                   "HasNext", "GetStory", "GetQueueRecords"}
+        allowed = {"Connect", "Disconnect", "IsConnected", "GetFolderChildren", "GetQueuesForm", "SetCurrentQueue",
+                   "GetStories", "HasNext", "GetStory", "GetQueueRecords"}
         self.assertTrue(set(self.sim.inews_app.state.sim.calls) <= allowed)
 
 

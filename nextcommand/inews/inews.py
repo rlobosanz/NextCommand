@@ -1,9 +1,13 @@
 """Operaciones de lectura de iNEWS con respuestas ya tipadas (sin NSML interpretado)."""
 from __future__ import annotations
 
+import asyncio
+import logging
 from dataclasses import dataclass
 
-from .soap import SoapClient, children, local, text_of
+from .soap import InewsFault, InewsUnavailable, SoapClient, children, local, text_of
+
+LOG = logging.getLogger("nextcommand.inews")
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,21 @@ class Inews:
 
     async def connect(self, user: str, password: str, server: str) -> None:
         await self.soap.call("Connect", [("Username", user), ("Password", password), ("Servername", server)])
+        await self.settle()
+
+    async def settle(self, tries: int = 3, wait_s: float = 0.5) -> None:
+        """Tras Connect, espera a que iNEWS dé la sesión por abierta (IsConnected) antes de la primera
+        llamada real. La F0 llamaba a IsConnected justo después de Connect y no tuvo el «sin permiso»
+        del primer intento que aparece cuando la primera llamada es GetFolderChildren."""
+        for i in range(tries):
+            try:
+                if await self.is_connected():
+                    return
+            except (InewsFault, InewsUnavailable) as e:
+                LOG.warning("IsConnected tras Connect: %s", e)
+            if i + 1 < tries:
+                await asyncio.sleep(wait_s)
+        LOG.warning("iNEWS no confirma la sesión tras Connect; se sigue igualmente")
 
     async def disconnect(self) -> None:
         await self.soap.call("Disconnect")
