@@ -552,6 +552,81 @@ class Probe:
         except (OcipError, ConnectionError, asyncio.TimeoutError) as exc:
             self.error("cleanup", exc)
 
+    async def inout_phase(self) -> None:
+        """F0b: how to play a clip between IN/OUT kept by NextCommand, without writing them on the clip.
+
+        Each variant cues the clip on channel A, plays it and records where it starts and where it stops.
+        Variant 1 (Set on the cue after Play 0) was ignored by 10.0.0.26 on 19-11-2026.
+        """
+        a = self.args
+        tapes = {t["tape_id"]: t for t in self.report["read"].get("tapes", [])}
+        item = (tapes.get(a.tape_id, {}).get("items") or [None])[0]
+        if not item:
+            raise SystemExit("La prueba de IN/OUT necesita un --tape-id que exista.")
+        A = self.channels["A"]
+        target = f'<Channel Id={quoteattr(A["id"])}>'
+        item_id = quoteattr(item["id"])
+        length = frames(item.get("Duration")) or 0
+        mark_in = min(a.in_frames, max(length // 4, 1))
+        mark_out = min(mark_in + a.play_frames, max(length - 25, mark_in + 1))
+        marks = f'<With Parameter="In">{mark_in}f</With><With Parameter="Out">{mark_out}f</With>'
+        variants = {
+            "set_before_play": (f"<PlayInit><Item Id={item_id}/></PlayInit>", "set"),
+            "item_with_marks": (f"<PlayInit><Item Id={item_id}>{marks}</Item></PlayInit>", None),
+            "playinit_with_marks": (f"<PlayInit><Item Id={item_id}/>{marks}</PlayInit>", None),
+            "seek_to_in": (f"<PlayInit><Item Id={item_id}/></PlayInit>", "seek"),
+        }
+        ready = lambda r: any(i.get("PlayHandle") and i.findtext("With[@Parameter='State']") == "Ready"
+                              for i in r.elements("Item"))
+        result: dict = {"requested": [mark_in, mark_out], "clip_length": length, "variants": {}}
+        self.report["inout"] = result
+        print(f"IN/OUT propios (pedidos {mark_in}-{mark_out} de {length} cuadros) en {A['short_id']}")
+        async with self.connection() as ocip:
+            before = await self.status(ocip, A, "inout-before")
+            if before["mode"] == "Play" and before["speed"]:
+                raise SystemExit(f"{A['short_id']} está reproduciendo; la prueba no lo interrumpe.")
+            if A["locked"]:
+                raise SystemExit(f"{A['short_id']} está bloqueado por {A['locker']}.")
+            clip_before = await self.clip_marks(ocip, item["id"])
+            for name, (playinit, extra) in variants.items():
+                out: dict = {}
+                result["variants"][name] = out
+                try:
+                    init = await ocip.request(f"{target}{playinit}</Channel>", f"{name}-playinit", CUE_TIMEOUT, ready)
+                    handle = next((i.get("PlayHandle") for i in init.elements("Item") if i.get("PlayHandle")), "")
+                    out["playinit"] = init.timings()
+                    if extra == "set":
+                        reply = await ocip.request(f"<Item PlayHandle={quoteattr(handle)}><Set>{marks}</Set></Item>",
+                                                   f"{name}-set")
+                        out["set"] = reply.timings()
+                    await ocip.request(f"{target}<Play><Item PlayHandle={quoteattr(handle)}>"
+                                       '<With Parameter="Speed">0%</With></Item></Play></Channel>', f"{name}-play0")
+                    if extra == "seek":
+                        await ocip.request(f"<Item PlayHandle={quoteattr(handle)}><Set><With Parameter=\"Position\">"
+                                           f"{mark_in}f</With></Set></Item>", f"{name}-seek")
+                    cued, _ = await self.wait_status(ocip, A, lambda s: s["handle"] == handle, 10, f"{name}-cued")
+                    out["cued"] = {k: cued[k] for k in ("in", "out", "position", "length")}
+                    await ocip.request(f'{target}<Set><With Parameter="Speed">100%</With></Set></Channel>',
+                                       f"{name}-take")
+                    wait = (mark_out - (cued["position"] or 0)) / 25 + 4
+                    s, took = await self.wait_status(ocip, A, lambda s: s["speed"] == 0 or s["handle"] != handle,
+                                                     min(wait, a.max_wait), f"{name}-end", 0.1)
+                    out["stopped"] = {"after_ms": ms(took), **{k: s[k] for k in ("mode", "speed", "position", "in",
+                                                                                   "out")}}
+                    out["respects_in"] = cued["position"] == mark_in
+                    out["respects_out"] = took is not None and s["position"] is not None and \
+                        abs(s["position"] - mark_out) <= 1
+                except (OcipError, asyncio.TimeoutError) as exc:
+                    out["error"] = str(exc)
+                finally:
+                    try:
+                        await ocip.request(f"{target}<Eject/></Channel>", f"{name}-eject")
+                    except OcipError as exc:
+                        out["eject_error"] = exc.code
+                print(f"  {name}: {out}")
+            result["clip_unchanged"] = clip_before == await self.clip_marks(ocip, item["id"])
+            print(f"  Clip sin cambios: {result['clip_unchanged']}")
+
     async def clip_marks(self, ocip: Ocip, item_id: str) -> dict:
         reply = await ocip.request(f'<Item Id={quoteattr(item_id)}><Get>{get_params(("In", "Out", "Length"))}'
                                    "</Get></Item>", "clip")
@@ -586,6 +661,8 @@ def parse_args(argv=None):
     parser.add_argument("--control", action="store_true", help="ejecutar la fase de control (actúa sobre los canales)")
     parser.add_argument("--yes", action="store_true", help="no pedir confirmación para la fase de control")
     parser.add_argument("--inventory", action="store_true", help="medir la lectura del inventario completo")
+    parser.add_argument("--inout-only", action="store_true",
+                        help="con --control, solo la prueba F0b de IN/OUT propios en el canal A")
     parser.add_argument("--skip-browse", action="store_true", help="no cargar nada en el canal de Browsing")
     parser.add_argument("--samples", type=int, default=20, help="lecturas de estado para medir latencia")
     parser.add_argument("--in-frames", type=int, default=50, help="IN del cue en la prueba, en cuadros")
@@ -603,13 +680,16 @@ async def run(args) -> dict:
         await probe.read_phase()
         if args.control:
             if not args.yes:
-                names = ", ".join(c["short_id"] for c in probe.channels.values())
+                names = probe.channels["A"]["short_id"] if args.inout_only else \
+                    ", ".join(c["short_id"] for c in probe.channels.values())
                 answer = input(f"La fase de control cargará y reproducirá clips en {names} de {args.host}. "
                                "¿Continuar? [s/N] ")
                 if answer.strip().lower() not in ("s", "si", "sí", "y", "yes"):
                     print("Fase de control cancelada.")
                     args.control = False
-            if args.control:
+            if args.control and args.inout_only:
+                await probe.inout_phase()
+            elif args.control:
                 await probe.control_phase()
     except (OcipError, ConnectionError, OSError, asyncio.TimeoutError) as exc:
         probe.error("lectura", exc)

@@ -67,12 +67,11 @@ class F0Tests(unittest.IsolatedAsyncioTestCase):
         steps = report["control"]["steps"]
         self.assertTrue(steps["cue_A"]["handle"])
         self.assertIsNotNone(steps["cue_A"]["ready_ms"])
-        self.assertEqual(steps["cue_in_out"]["cue_now"], [50, 75])
+        self.assertEqual(steps["cue_in_out"]["cue_now"], [0, 399])  # como 10.0.0.26: Set aceptado e ignorado
         self.assertTrue(steps["cue_in_out"]["clip_unchanged"])
         self.assertIsNotNone(steps["take_A"]["confirmed_ms"])
         self.assertTrue(steps["cue_B_during_A"]["handle"])
-        last = steps["end_of_A"]["transitions"][-1]
-        self.assertEqual((last["mode"], last["speed"], last["position"]), ("Play", 0, 75))  # congelado en el OUT
+        self.assertGreaterEqual(steps["end_of_A"]["transitions"][-1]["position"], 75)
         self.assertEqual(steps["stop_B"]["status"]["speed"], 0)
         self.assertTrue(steps["reconnect"]["same_handle"])
         self.assertTrue(steps["browse"]["preview"]["ok"])
@@ -102,6 +101,22 @@ class F0Tests(unittest.IsolatedAsyncioTestCase):
         report = await f0_streamio.run(self.args("--control", "--yes", "--skip-browse"))
         self.assertEqual(report["errors"], [])
         self.assertNotIn("browse", report["control"]["steps"])
+
+    async def test_inout_variants(self):
+        report = await f0_streamio.run(self.args("--control", "--yes", "--inout-only"))
+        self.assertEqual(report["errors"], [])
+        self.assertIsNone(report["control"])
+        variants = report["inout"]["variants"]
+        self.assertEqual(report["inout"]["requested"], [50, 75])
+        self.assertTrue(variants["set_before_play"]["respects_in"])
+        self.assertTrue(variants["set_before_play"]["respects_out"])
+        self.assertTrue(variants["item_with_marks"]["respects_out"])
+        self.assertFalse(variants["playinit_with_marks"]["respects_out"])
+        self.assertTrue(variants["seek_to_in"]["respects_in"])
+        self.assertTrue(report["inout"]["clip_unchanged"])
+        self.assertEqual({c["Mode"] for c in self.fake.channels.values()}, {"Empty"})
+        self.assertFalse(any(r.find("PlayInit") is not None for r in self.fake.received
+                             if r.find("Channel") is not None and r.find("Channel").get("Id") != "c-out1"))
 
     async def test_control_refuses_a_channel_that_is_playing(self):
         self.fake.cues["p-x"] = {"channel": "c-out2", "item": "i-2", "In": 0, "Out": 599, "base": 0,

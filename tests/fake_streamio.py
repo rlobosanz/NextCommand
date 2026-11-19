@@ -15,6 +15,11 @@ FPS = 25
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64 + b"\xff\xd9"
 
 
+def with_marks(node) -> dict:
+    return {w.get("Parameter"): int((w.text or "0").removesuffix("f")) for w in node.findall("With")
+            if w.get("Parameter") in ("In", "Out")}
+
+
 class FakeStreamIO:
     def __init__(self):
         self.http_port = 0
@@ -114,6 +119,8 @@ class FakeStreamIO:
                     return wrap(ack="NotFound")
                 for w in item.findall("Set/With"):
                     value = int((w.text or "0").removesuffix("f"))
+                    if w.get("Parameter") in ("In", "Out") and item.get("PlayHandle") in self.loaded.values():
+                        continue  # como 10.0.0.26: con el cue ya en el canal, el Set se acepta y se ignora
                     if w.get("Parameter") == "Position":
                         cue.update(base=value, since=time.monotonic())
                     else:
@@ -142,8 +149,10 @@ class FakeStreamIO:
                 return wrap(ack="NotFound")
             handle = f"p-{len(self.cues) + 1}"
             clip = self.items[item_id]
-            self.cues[handle] = {"channel": cid, "item": item_id, "In": clip["In"], "Out": clip["Out"],
-                                 "base": clip["In"], "speed": 0, "since": time.monotonic()}
+            marks = with_marks(channel.find("PlayInit/Item"))
+            self.cues[handle] = {"channel": cid, "item": item_id, "In": marks.get("In", clip["In"]),
+                                 "Out": marks.get("Out", clip["Out"]), "base": marks.get("In", clip["In"]),
+                                 "speed": 0, "since": time.monotonic()}
             return (f'<OCIP ResponseId="{rid}"><Ack Return="OK"/></OCIP>'
                     f'<OCIP ResponseId="{rid}"><Result Return="OK"><Item PlayHandle="{handle}"><With Parameter="State">'
                     f'Cueing</With></Item></Result></OCIP>'
