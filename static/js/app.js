@@ -198,10 +198,11 @@ function buildCards() {
         h("span", { class: "channel-state" })),
       h("div", { class: "media-title" }, h("span", { class: "current-title" }), h("span", { class: "current-id" })),
       h("div", { class: "slot-preview", hidden: true }, h("img", { alt: "" })),
-      h("div", { class: "timers" }, h("div", {}, h("small", { "data-i18n": "elapsed" }), h("b", { class: "elapsed", text: "—" })), h("div", {}, h("small", { "data-i18n": "remaining" }), h("b", { class: "remaining", text: "—" }))),
       h("div", { class: "message", hidden: true }),
-      h("div", { class: "actions" },
-        ...["cue", "play", "pause", "stop"].map(a => h("button", { "data-action": a, "data-slot": name, class: a === "play" ? "play" : "", "data-i18n": "act." + a }))))
+      h("div", { class: "card-bottom" },
+        h("div", { class: "timers" }, h("div", {}, h("small", { "data-i18n": "elapsed" }), h("b", { class: "elapsed", text: "—" })), h("div", {}, h("small", { "data-i18n": "remaining" }), h("b", { class: "remaining", text: "—" }))),
+        h("div", { class: "actions" },
+          ...["cue", "play", "pause", "stop"].map(a => h("button", { "data-action": a, "data-slot": name, class: a === "play" ? "play" : "", "data-i18n": "act." + a })))))
     list.append(card)
     cardState[name] = card
   }
@@ -533,6 +534,9 @@ async function openBrowse(key) {
 }
 
 function wireInput() {
+  // tras usar un botón con el ratón se suelta el foco: Return debe ser siempre el Take
+  document.addEventListener("click", e => { const b = e.target.closest("button"); if (b && !b.closest("dialog")) setTimeout(() => b.blur()) })
+  for (const d of document.querySelectorAll("dialog")) d.addEventListener("close", () => document.activeElement?.blur?.())
   document.addEventListener("keydown", e => {
     if (!state || dialogOpen() || e.ctrlKey || e.metaKey || e.altKey) return
     if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName) && !(document.activeElement.type === "checkbox" && e.key !== " ")) return
