@@ -4,9 +4,13 @@ Estado: implementado en v0.2.0 y probado con los simuladores. **Pendiente de val
 
 ## ¿Notifica iNEWS los cambios?
 
-No de forma «push». Los Web Services de iNEWS son SOAP por HTTP petición-respuesta: el servidor nunca abre una conexión hacia el cliente ni mantiene un canal abierto. Cualquier operación de «vigilancia» (`WatchQueueForChanges`, `GetChangedQueues`, si el servidor las publica) solo puede funcionar así: el cliente registra en **su sesión** qué colas le interesan y después **pregunta** cada cierto tiempo qué ha cambiado desde la última pregunta. Sigue siendo sondeo; como mucho ahorra comparar registros.
+El WSDL del servidor real (descargado el 19-11-2026 con el script) publica en `inewssystem`:
 
-No tenemos documentación ni WSDL de esas dos operaciones en el repositorio ni en `~/Proyectos`, así que no sabemos aún sus parámetros ni qué devuelven. El script de prueba descarga los WSDL del servidor y las llama para salir de dudas. Si resultan útiles se podrán usar como aviso previo (solo leer QueueRecords cuando digan que la cola cambió), pero no cambian el diseño.
+- `WatchQueueForChanges(QueueFullName)` y `RemoveWatchForQueueChanges(QueueFullName)`: apuntan o retiran una cola en la vigilancia **de la sesión**.
+- `GetChangedQueues()` → `ChangedQueueNames[]`: «colas que han cambiado desde que se registraron y desde la última vez que se hizo esta petición». Es **sondeo**: el cliente pregunta; solo dice *qué cola* cambió, no qué historias.
+- `RegisterNotificationService(ServiceURL)`: este sí es **push**. El web service de iNEWS llama a una URL nuestra que implemente `inewsnotification.wsdl`. Exige que el servidor de Web Services (10.0.0.9) llegue por red a NextCommand, y montar un servicio SOAP de recepción. Hoy NextCommand corre en el Mac por VPN, así que no se usa.
+
+Plan: cuando el script confirme que `GetChangedQueues` avisa de verdad (y con qué retraso), usarlo como aviso barato cada segundo y leer QueueRecords solo cuando diga que la cola cambió (más una comprobación periódica por si acaso). El diseño de abajo no cambia.
 
 ## Cómo funciona
 

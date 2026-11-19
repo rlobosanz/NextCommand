@@ -19,8 +19,8 @@ un VideoID, flota y desflota una, retén una, edita solo el texto de otra, cambi
 crea y borra una historia. Anota la hora de cada cosa para compararla con el registro.
 
 Operaciones que llama: Connect, SetCurrentQueue, GetQueueRecords, GetStories, HasNext, GetStory,
-Disconnect y, solo si el WSDL las publica, las de vigilancia (nombre con Watch o Changed y sin
-verbos de escritura). Nunca crea, bloquea, guarda, mueve ni borra historias. Desconecta siempre.
+Disconnect y, solo si el WSDL las publica, WatchQueueForChanges, GetChangedQueues y
+RemoveWatchForQueueChanges. Nunca RegisterNotificationService (avisos por callback). Nunca crea, bloquea, guarda, mueve ni borra historias. Desconecta siempre.
 
 Uso (solo biblioteca estándar, Python 3.9+):
     python3 tools/seguimiento_inews.py --servidor NOMBRE --usuario USUARIO --cola RUTA.DE.LA.ESCALETA
@@ -87,7 +87,8 @@ class Cliente:
         self.permitidas = set(LECTURA)
 
     def get(self, url):
-        with self.opener.open(url, timeout=30) as r:
+        # opener propio: la descarga del WSDL no comparte cookies con la sesión SOAP
+        with urllib.request.build_opener().open(url, timeout=30) as r:
             return r.read()
 
     def llamar(self, servicio, operacion, campos=(), guardar=False):
@@ -123,6 +124,13 @@ def descargar_wsdl(c, log, salida):
     carpeta = os.path.join(salida, "wsdl")
     os.makedirs(carpeta, exist_ok=True)
     operaciones, documentos = {}, []
+    try:  # WSDL que debe implementar el cliente para recibir avisos (RegisterNotificationService)
+        datos = c.get(f"{c.base}/inewsnotification?wsdl")
+        with open(os.path.join(carpeta, "inewsnotification.wsdl"), "wb") as f:
+            f.write(datos)
+        log("inewsnotification.wsdl descargado (avisos por callback)")
+    except Exception as e:  # noqa: BLE001
+        log(f"inewsnotification?wsdl no disponible ({e})")
     for servicio in NS:
         url = f"{c.base}/inews{servicio}?wsdl"
         try:
@@ -317,7 +325,16 @@ def main():
     resumen["vigilancia"] = vigilancia
 
     # Connect no se guarda en disco: la petición lleva la contraseña.
-    c.llamar("system", "Connect", [("Username", a.usuario), ("Password", clave), ("Servername", a.servidor)])
+    log(f"Connect como {a.usuario} al servidor iNEWS {a.servidor!r} por {a.url}")
+    try:
+        c.llamar("system", "Connect", [("Username", a.usuario), ("Password", clave), ("Servername", a.servidor)])
+    except Exception as e:  # noqa: BLE001
+        log(f"Connect falló: {e}")
+        log("Revisa --servidor (nombre del servidor iNEWS, el mismo que en inewsbrowser), usuario y contraseña.")
+        with open(os.path.join(salida, "resumen.json"), "w", encoding="utf-8") as f:
+            json.dump({**resumen, "error_connect": str(e)}, f, ensure_ascii=False, indent=2)
+        return
+    watch = None
     try:
         log("== 2. Coste de las lecturas ==")
         tiempos = []
@@ -336,9 +353,9 @@ def main():
         vig_ok = False
         if vigilancia and not a.sin_vigilancia:
             log("== 3. Operaciones de vigilancia ==")
-            for op, info in vigilancia.items():
-                c.permitidas.add(op)
-            watch = next((op for op in vigilancia if re.search(r"watch", op, re.I)), None)
+            watch = next((op for op in vigilancia if re.match(r"watch", op, re.I)), None)
+            cambiadas = next((op for op in vigilancia if re.search(r"changed", op, re.I)), None)
+            c.permitidas.update(x for x in (watch, cambiadas) if x)  # RegisterNotificationService nunca se llama
             if watch:
                 info = vigilancia[watch]
                 campos = []
@@ -355,10 +372,11 @@ def main():
                     vig_ok = True
                 except Exception as e:  # noqa: BLE001
                     log(f"  {watch} falló: {e}")
+                    watch = None
             resumen["watch_aceptado"] = vig_ok
 
         cambiadas_op = next((op for op in vigilancia if re.search(r"changed", op, re.I)), None)
-        if a.sin_vigilancia:
+        if a.sin_vigilancia or not vig_ok:
             cambiadas_op = None
 
         log("== 4. Vigilancia: haz ahora los cambios en iNEWS ==")
@@ -434,7 +452,17 @@ def main():
                     resumen["eventos"].append({"t": time.time(), "tipo": "sin_mtime", "cambios": ocultos})
                 else:
                     log(f"Lectura completa ({len(heads)} cabeceras, {ms} ms): todo coincidía con lo seguido por MTime")
+    except Exception as e:  # noqa: BLE001
+        log(f"Error: {e.__class__.__name__}: {e}")
+        raise
     finally:
+        if watch and "RemoveWatchForQueueChanges" in operaciones.get("system", []):
+            c.permitidas.add("RemoveWatchForQueueChanges")
+            try:
+                c.llamar("system", "RemoveWatchForQueueChanges", [("QueueFullName", cola)])
+                log("RemoveWatchForQueueChanges: vigilancia retirada")
+            except Exception as e:  # noqa: BLE001
+                log(f"RemoveWatchForQueueChanges falló: {e}")
         try:
             c.llamar("system", "Disconnect")
         except Exception:  # noqa: BLE001
