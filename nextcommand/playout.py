@@ -66,11 +66,12 @@ class Slot:
     status: ChannelStatus | None = None
     link_error: str = ""
     done_at: float = 0.0         # momento (monotónico) en que acabó la última orden: las lecturas anteriores no valen
+    auto: bool = False           # preparada por la precarga automática (se puede reapuntar si cambia la escaleta)
 
     def clear(self) -> None:
         self.row_key = None
         self.title = self.video_id = self.item_id = self.handle = self.channel = self.note = self.pending = ""
-        self.taken, self.marks, self.error, self.state = False, None, None, "idle"
+        self.taken, self.marks, self.error, self.state, self.auto = False, None, None, "idle", False
 
 
 class MarksStore:
@@ -228,7 +229,12 @@ class Engine:
     # ---- escaleta ----
 
     def set_rundown(self, rd: Rundown) -> None:
-        """Escaleta nueva o releída. Las salidas conservan su fila por identidad; si la fila cambió, se invalida."""
+        """Escaleta nueva, releída o actualizada por el seguimiento.
+
+        Las salidas conservan su fila por identidad. Lo que está en antena nunca se interrumpe (solo se avisa).
+        Si la fila preparada cambió de VideoID o desapareció, el cue queda invalidado (no se puede hacer Take) y,
+        con las órdenes permitidas, se vuelve a resolver solo: se prepara el clip nuevo o se libera la salida."""
+        old = self.rundown
         self.rundown = rd
         for slot in self.slots.values():
             if slot.row_key is None:
@@ -244,13 +250,74 @@ class Engine:
         row = rd.find(self.last_taken_key)
         if row is not None:
             self.last_index = row.index
+        elif old is not None and self.last_taken_key:
+            # la última fila lanzada ya no está: se sigue desde la primera fila posterior que siga existiendo
+            prev = old.find(self.last_taken_key)
+            after = old.rows[prev.index + 1:] if prev else []
+            survivor = next((r for r in (rd.find(o.key) for o in after) if r is not None), None)
+            self.last_index = survivor.index - 1 if survivor else len(rd.rows) - 1
+        self._repoint_precue()
         self.bump()
 
     def _invalidate(self, slot: Slot, code: str, text: str) -> None:
-        if slot.state in ("air", "ended") or (slot.state == "paused" and slot.taken):
+        if slot.state in ("air", "ended") or (slot.state == "paused" and slot.taken) or slot.taken:
             slot.note = text  # lo que ya está en antena no se interrumpe
-        else:
-            slot.error = (code, text)
+            return
+        slot.error = (code, text)
+        if not slot.pending:
+            slot.state = "failed"  # sin Take hasta que se vuelva a resolver
+        if self.commands_allowed():
+            self.spawn(self._resync(slot.name))
+
+    def _repoint_precue(self) -> None:
+        """Tras un cambio de escaleta, la precarga automática apunta a la nueva siguiente fila."""
+        if self.last_slot is None or not self.commands_allowed():
+            return
+        target = self.slots[other(self.last_slot)]
+        nxt = self.next_row()
+        if nxt is None:
+            return
+        if target.state == "idle" or (target.state == "ready" and target.auto and target.row_key != nxt.key):
+            self.want_precue = True
+            self._maybe_precue()
+
+    async def _resync(self, name: str) -> None:
+        """Vuelve a resolver una salida preparada cuya fila cambió o desapareció en iNEWS."""
+        async with self._lock:
+            slot = self.slots[name]
+            if slot.error is None or slot.error[0] not in ("row_changed", "row_gone") or slot.taken:
+                return
+            if not self.commands_allowed():
+                return
+            row = self.row_for(slot.row_key)
+            try:
+                chan, st = await self._fresh(ROLE[name])
+            except AppError:
+                return  # sin Stream IO: queda fallida y el operador puede «Comprobar»
+            if slot.handle and st.handle == slot.handle:
+                if st.speed > 0:
+                    slot.note = slot.error[1]
+                    slot.error, slot.taken = None, True  # alguien lo lanzó por fuera: no se toca
+                    self.derive(slot)
+                    self.bump()
+                    return
+                try:
+                    await self.get_sio().eject(chan)
+                except OcipError:
+                    return
+            slot.clear()
+            slot.done_at = time.monotonic()
+            self.bump()
+            if row is not None and row.playable:
+                try:
+                    await self._cue(name, row)
+                except AppError as exc:
+                    LOG.info("No se pudo volver a preparar la fila cambiada: %s", exc.message)
+            elif self.last_slot is not None:
+                self.want_precue = True
+            self._save()
+            self.bump()
+        self._maybe_precue()
 
     def row_for(self, key: str | None) -> Row | None:
         return self.rundown.find(key) if self.rundown else None
@@ -447,6 +514,7 @@ class Engine:
         marks = self.marks_for(row)
         slot.row_key, slot.title, slot.video_id, slot.item_id = row.key, row.title, row.video_id, row.media.item_id
         slot.channel, slot.marks, slot.handle, slot.taken, slot.error = chan.short_id, marks, "", False, None
+        slot.auto = False
         slot.pending, slot.state = "cue", "pending"
         self.bump()
         try:
@@ -644,6 +712,7 @@ class Engine:
                 self.want_precue = False
                 try:
                     await self._cue(target.name, row)
+                    target.auto = True
                 except AppError as exc:
                     LOG.info("Precarga no realizada: %s", exc.message)
                     if target.error is None:

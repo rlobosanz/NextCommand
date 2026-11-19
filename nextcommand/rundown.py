@@ -22,7 +22,7 @@ class Media:
 
 @dataclass
 class Row:
-    key: str                  # cola/localizador: identidad estable aunque la fila cambie de posición
+    key: str                  # cola/#StoryID: identidad estable aunque la fila se mueva (el localizador cambia)
     index: int
     kind: str                 # story | break
     locator: str
@@ -35,6 +35,10 @@ class Row:
     @property
     def playable(self) -> bool:
         return self.kind == "story" and self.media.status == MEDIA_AVAILABLE
+
+    def signature(self) -> tuple:
+        """Lo que importa al playout: si no cambia, la fila no ha cambiado."""
+        return (self.key, self.kind, self.locator, self.title, self.page, self.video_id, self.held)
 
     def public(self) -> dict[str, Any]:
         return {"key": self.key, "index": self.index, "kind": self.kind, "title": self.title, "page": self.page,
@@ -65,8 +69,17 @@ def video_field_from_form(columns: list[dict[str, Any]], fallback: str) -> str:
     return fallback
 
 
-def build_rows(path: str, raw: list[tuple[str, str]], video_field: str) -> tuple[list[Row], int]:
-    """raw = [(localizador, NSML de cabecera)]. Excluye las flotadas; los breaks quedan como separadores."""
+def row_keys(path: str, records) -> dict[str, str]:
+    """Identidad de cada fila: cola/#StoryID. El localizador cambia al mover historias; el StoryID no."""
+    return {r.locator: f"{path}/#{r.story_id}" for r in records if r.story_id}
+
+
+def build_rows(path: str, raw: list[tuple[str, str]], video_field: str,
+               keys: dict[str, str] | None = None) -> tuple[list[Row], int]:
+    """raw = [(localizador, NSML de cabecera)]. Excluye las flotadas; los breaks quedan como separadores.
+
+    `keys` (localizador → identidad, ver `row_keys`); sin entrada, cola/localizador."""
+    keys = keys or {}
     rows: list[Row] = []
     floated = 0
     for locator, text in raw:
@@ -79,7 +92,7 @@ def build_rows(path: str, raw: list[tuple[str, str]], video_field: str) -> tuple
             floated += 1
             continue
         title = fields.get("title", "").strip()
-        rows.append(Row(key=f"{path}/{locator}", index=len(rows), kind="break" if flags["break"] else "story",
+        rows.append(Row(key=keys.get(locator, f"{path}/{locator}"), index=len(rows), kind="break" if flags["break"] else "story",
                         locator=locator, title=title or locator, page=fields.get("page-number", "").strip(),
                         video_id="" if flags["break"] else fields.get(video_field, "").strip(),
                         held=flags["held"]))

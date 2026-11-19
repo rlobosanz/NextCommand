@@ -23,9 +23,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 NC_SIMULATOR=1 .venv/bin/python -m uvicorn --factory nextcommand.api:app_from_env --port 9054
 ```
 
-Variables (`.env.example`): `NC_INEWS_WS_URL`, `NC_INEWS_SERVER`, `NC_IDLE_MINUTES`, `NC_SIMULATOR`, `NC_BIND`, `NC_DATA_DIR`. Los servidores y canales se configuran en la interfaz y se guardan en `data/config.json` (sin contraseñas).
+Variables (`.env.example`): `NC_INEWS_WS_URL`, `NC_INEWS_SERVER`, `NC_IDLE_MINUTES`, `NC_FOLLOW_INTERVAL`, `NC_FOLLOW_FULL_EVERY`, `NC_SIMULATOR`, `NC_BIND`, `NC_DATA_DIR`. Los servidores y canales se configuran en la interfaz y se guardan en `data/config.json` (sin contraseñas).
 
-Lo que no hace la V1: shotbox, miniaturas, actualización de la escaleta en tiempo real ni playlists desde el inventario.
+Lo que no hace todavía: shotbox, miniaturas ni playlists desde el inventario. La escaleta se sigue casi en tiempo real desde la v0.2.0 (`docs/seguimiento-escaleta.md`).
 
 ## F0 · Sondeo de Stream IO
 

@@ -1,5 +1,15 @@
 # Cambios
 
+## v0.2.0 — 2026-11-19
+
+- Seguimiento de la escaleta abierta casi en tiempo real (cada 2 s, `NC_FOLLOW_INTERVAL`; 0 lo desactiva). iNEWS no empuja cambios: NextCommand compara los QueueRecords (localizador, StoryID, MTime) y relee solo la cabecera de lo que cambió. Altas, bajas, movimientos, VideoID, título, página, flotadas y retenidas; los cambios solo de texto no tocan la escaleta.
+- Reconciliación completa al cargar, tras reconectar con iNEWS, tras un fallo, con muchos cambios a la vez y cada 60 s (`NC_FOLLOW_FULL_EVERY`).
+- Reglas de directo: lo que está en antena nunca se interrumpe (solo se avisa). Si la fila preparada cambia de VideoID o desaparece, su cue queda invalidado (sin Take) y se vuelve a resolver solo: se prepara el clip nuevo o se libera la salida y se precarga la siguiente. Si entra una fila nueva antes de la precargada, la precarga se reapunta.
+- Identidad de fila por StoryID: en iNEWS mover una historia cambia su localizador. Una historia movida no se relee. Los IN/OUT guardados con la v0.1 (por localizador) se pierden.
+- WatchQueueForChanges/GetChangedQueues no se usan: en el iNEWS real GetChangedQueues no avisó de ningún cambio.
+- Indicador «Siguiendo iNEWS · último cambio» y aviso «Vista desactualizada» con el motivo.
+- `tools/seguimiento_inews.py`: prueba de solo lectura contra iNEWS real (operaciones del WSDL, WatchQueueForChanges/GetChangedQueues si existen, y comportamiento del MTime). Resultados en `seguimiento-resultados/`, sin versionar.
+
 ## v0.1.3 — 2026-11-19
 
 - La interfaz ocupa el alto de la ventana: ya no hay scroll en el panel derecho y solo la escaleta lleva scroll (cabecera de columnas fija).
