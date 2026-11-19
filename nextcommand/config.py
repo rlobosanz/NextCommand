@@ -25,6 +25,15 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _float(name: str, default: float, minimum: float) -> float:
+    """Número de segundos; 0 desactiva y por debajo del mínimo se usa el mínimo."""
+    try:
+        value = float(os.environ.get(name, default))
+    except ValueError:
+        return default
+    return 0.0 if value <= 0 else max(value, minimum)
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path = Path("data")
@@ -34,6 +43,8 @@ class Settings:
     poll_interval: float = 0.3
     simulator: bool = False
     ocip_token: str = ""
+    follow_interval: float = 2.0    # seguimiento de la escaleta (s); 0 lo desactiva
+    follow_full_every: float = 60.0  # reconciliación completa periódica (s)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -44,6 +55,8 @@ class Settings:
             idle_minutes=_int("NC_IDLE_MINUTES", cls.idle_minutes),
             simulator=os.environ.get("NC_SIMULATOR", "").lower() in ("1", "true", "yes"),
             ocip_token=os.environ.get("NC_OCIP_TOKEN", ""),
+            follow_interval=_float("NC_FOLLOW_INTERVAL", cls.follow_interval, 0.5),
+            follow_full_every=_float("NC_FOLLOW_FULL_EVERY", cls.follow_full_every, 2.0),
         )
 
 
