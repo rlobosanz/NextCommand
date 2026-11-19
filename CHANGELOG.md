@@ -1,5 +1,11 @@
 # Cambios
 
+## v0.1.3 — 2026-11-19
+
+- La interfaz ocupa el alto de la ventana: ya no hay scroll en el panel derecho y solo la escaleta lleva scroll (cabecera de columnas fija).
+- Las salidas A/B reparten el alto disponible; la miniatura ocupa lo que sobra y el visor de Browsing vacío ocupa menos. Con ventanas bajas, ocultar Browsing da más sitio a las miniaturas.
+- Return es siempre el Take: tras usar un botón con el ratón se suelta el foco.
+
 ## v0.1.2 — 2026-11-19
 
 - Salidas A/B más compactas: miniatura, tiempos y botones más pequeños, y el panel derecho se puede estrechar hasta 220 px.
