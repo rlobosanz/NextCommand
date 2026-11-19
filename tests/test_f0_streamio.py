@@ -84,6 +84,25 @@ class F0Tests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(v.endswith(("/Abort", "/Lock", "/Delete")) for v in verbs))
         self.assertEqual({c["Mode"] for c in self.fake.channels.values()}, {"Empty"})
 
+    async def test_active_cue_is_the_playing_one_not_the_first(self):
+        # As seen on 10.0.0.26: a Ready cue listed before the one on air.
+        self.fake.cues["p-wait"] = {"channel": "c-out1", "item": "i-2", "In": 0, "Out": 599, "base": 0,
+                                    "speed": 0, "since": time.monotonic()}
+        report = await f0_streamio.run(self.args("--control", "--yes"))
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["control"]["before"]["A"]["handle"], "")
+        self.assertEqual(len(report["control"]["before"]["A"]["cues"]), 1)
+        self.assertEqual(report["control"]["steps"]["take_A"]["status"]["handle"],
+                         report["control"]["steps"]["cue_A"]["handle"])
+
+    async def test_locked_browse_channel_can_be_skipped(self):
+        self.fake.locked_browse = True
+        with self.assertRaises(SystemExit):
+            await f0_streamio.run(self.args("--control", "--yes"))
+        report = await f0_streamio.run(self.args("--control", "--yes", "--skip-browse"))
+        self.assertEqual(report["errors"], [])
+        self.assertNotIn("browse", report["control"]["steps"])
+
     async def test_control_refuses_a_channel_that_is_playing(self):
         self.fake.cues["p-x"] = {"channel": "c-out2", "item": "i-2", "In": 0, "Out": 599, "base": 0,
                                  "speed": 100, "since": time.monotonic()}

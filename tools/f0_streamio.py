@@ -264,7 +264,10 @@ class Probe:
                                    "</Parent></Item></Get></Channel>", label)
         node = next(iter(reply.elements("Channel")), None)
         values = with_values(node)
-        item = node.find("Item") if node is not None else None
+        # A channel can hold several cues: the active one is "Playing" (also when paused at speed 0),
+        # the others wait as "Ready". Visto en 10.0.0.26 el 19-11-2026.
+        items = node.findall("Item") if node is not None else []
+        item = next((i for i in items if with_values(i).get("State") == "Playing"), None)
         item_values = with_values(item)
         parent = item.find("Parent/Item") if item is not None else None
         return {"mode": values.get("Mode", ""), "speed": speed(values.get("Speed")),
@@ -275,6 +278,7 @@ class Probe:
                 "state": item_values.get("State", ""), "position": frames(item_values.get("Position")),
                 "in": frames(item_values.get("In")), "out": frames(item_values.get("Out")),
                 "length": frames(item_values.get("Length")), "eof": item_values.get("EOF"),
+                "cues": [{"handle": i.get("PlayHandle", ""), "state": with_values(i).get("State", "")} for i in items],
                 "at": time.monotonic()}
 
     async def find_tape(self, ocip: Ocip, tape_id: str) -> dict:
@@ -315,6 +319,7 @@ class Probe:
                                      f"{', '.join(sorted(by_name)) or 'ninguno'}")
                 self.channels[role] = channel
             read["channels"] = {role: c for role, c in self.channels.items()}
+            read["status_now"] = {role: await self.status(ocip, c, f"now-{role}") for role, c in self.channels.items()}
             for role, c in self.channels.items():
                 print(f"  {role}: {c['short_id']} tipo={c['type']} modo={c['mode']} dispositivo={c['device'] or '-'}"
                       f" bloqueado={c['locked']} fin de clip={c['end_of_clip']}")
@@ -439,6 +444,8 @@ class Probe:
             before = {role: await self.status(ocip, c, f"before-{role}") for role, c in self.channels.items()}
             control["before"] = before
             for role, s in before.items():
+                if role == "browse" and a.skip_browse:
+                    continue
                 if s["mode"] == "Play" and s["speed"]:
                     raise SystemExit(f"{self.channels[role]['short_id']} está reproduciendo; la prueba no lo interrumpe.")
                 if self.channels[role]["locked"]:

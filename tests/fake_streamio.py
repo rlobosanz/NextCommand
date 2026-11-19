@@ -32,6 +32,7 @@ class FakeStreamIO:
         self.cues: dict[str, dict] = {}     # PlayHandle -> cue
         self.loaded: dict[str, str] = {}    # channel -> PlayHandle
         self.equal_supported = True
+        self.locked_browse = False
         self.received: list[ET.Element] = []
 
     # ---- estado ----
@@ -59,17 +60,22 @@ class FakeStreamIO:
         withs += f'<With Parameter="Speed">{speed}</With><With Parameter="Framerate">{FPS}</With>'
         preview = (f'<RemotePreview><With Parameter="URL">http://127.0.0.1:{self.http_port}/stream?id={c["EngineId"]}'
                    "</With></RemotePreview>")
+        lock = ('<Lock Enable="True" LockerId="RC Advanced Transport"/>' if self.locked_browse and cid == "c-out3"
+                else '<Lock Enable="False"/>')
         item = ""
+        for h, other in self.cues.items():  # cues waiting in the channel come first, as on the real server
+            if other["channel"] == cid and h != handle:
+                item += (f'<Item PlayHandle="{h}"><With Parameter="State">Ready</With>'
+                         f'<With Parameter="Position">{other["In"]}f</With></Item>')
         if cue:
             pos = self.position(cue)
-            state = "Playing" if cue["speed"] else "Paused"
             clip = self.items[cue["item"]]
-            item = (f'<Item PlayHandle="{handle}"><Parent><Item Id="{cue["item"]}"><With Parameter="TapeId">'
-                    f'{clip["TapeId"]}</With></Item></Parent><With Parameter="State">{state}</With>'
-                    f'<With Parameter="Position">{pos}f</With><With Parameter="In">{cue["In"]}f</With>'
-                    f'<With Parameter="Out">{cue["Out"]}f</With><With Parameter="Length">{clip["Length"]}f</With>'
-                    f'<With Parameter="EOF">{"True" if pos >= cue["Out"] else "False"}</With></Item>')
-        return f'<Channel Id="{cid}">{withs}{preview}<Lock Enable="False"/>{item}</Channel>'
+            item += (f'<Item PlayHandle="{handle}"><Parent><Item Id="{cue["item"]}"><With Parameter="TapeId">'
+                     f'{clip["TapeId"]}</With></Item></Parent><With Parameter="State">Playing</With>'
+                     f'<With Parameter="Position">{pos}f</With><With Parameter="In">{cue["In"]}f</With>'
+                     f'<With Parameter="Out">{cue["Out"]}f</With><With Parameter="Length">{clip["Length"]}f</With>'
+                     f'<With Parameter="EOF">{"True" if pos >= cue["Out"] else "False"}</With></Item>')
+        return f'<Channel Id="{cid}">{withs}{preview}{lock}{item}</Channel>'
 
     # ---- OCIP ----
 
@@ -161,7 +167,8 @@ class FakeStreamIO:
             self.set_speed(cue, float(speed_node.text.removesuffix("%")))
             return wrap()
         if channel.find("Eject") is not None:
-            self.loaded.pop(cid, None)
+            handle = self.loaded.pop(cid, None)
+            self.cues.pop(handle, None)
             state["Mode"] = "Empty"
             return wrap()
         return wrap(ack="SyntaxError")
