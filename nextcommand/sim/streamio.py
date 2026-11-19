@@ -41,6 +41,8 @@ class FakeStreamIO:
         self.equal_supported = True
         self.locked_browse = False
         self.received: list[ET.Element] = []
+        self.register_supported = False   # F0-bis: el equipo real aún no se ha probado
+        self.writers: set = set()
 
     # ---- estado ----
 
@@ -96,6 +98,8 @@ class FakeStreamIO:
             out += "".join(f'<OCIP ResponseId="{rid}"><Result Return="OK">{p}</Result></OCIP>' for p in parts)
             return out + f'<OCIP ResponseId="{rid}"><Finished Return="OK"/></OCIP>'
 
+        if root.find("./Server/Register") is not None:
+            return wrap() if self.register_supported else wrap(ack="SyntaxError")
         if root.find("./Server/List/Channel/IODevice") is not None:
             return wrap("".join(f'<Channel Id="{cid}"><IODevice Index="0" Name="{c["device"]}"/></Channel>'
                                 for cid, c in self.channels.items()))
@@ -184,7 +188,13 @@ class FakeStreamIO:
             return wrap()
         return wrap(ack="SyntaxError")
 
+    def push(self, text: str) -> None:
+        """Envía un mensaje sin ResponseId a todas las conexiones (aviso simulado)."""
+        for writer in list(self.writers):
+            writer.write(text.encode())
+
     async def handle(self, reader, writer):
+        self.writers.add(writer)
         buffer = b""
         while True:
             try:
@@ -201,6 +211,7 @@ class FakeStreamIO:
                 writer.write(self.answer(root).encode())
                 with contextlib.suppress(ConnectionResetError):
                     await writer.drain()
+        self.writers.discard(writer)
         writer.close()
 
     async def handle_http(self, reader, writer):
