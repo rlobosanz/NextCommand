@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NextCommand</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark" aria-hidden="true">▶</span>NextCommand</div>
+  <div class="top-right">
+    <span class="system"><i class="dot" id="inews-dot"></i> iNEWS <strong id="inews-status">—</strong></span>
+    <span class="system"><i class="dot" id="stream-dot"></i> Stream IO <strong id="stream-status">—</strong></span>
+    <time class="clock" id="clock">--:--:--</time>
+    <select class="lang" id="lang" aria-label="Idioma / Language"><option value="es">ES</option><option value="en">EN</option></select>
+    <button class="ghost" id="config-open" data-i18n="config.open">⚙ Configuración</button>
+    <button class="ghost" id="login-open" data-i18n="session">Sesión</button>
+  </div>
+</header>
+<div class="banner" id="viewer-banner" hidden><span id="viewer-text"></span><button id="claim" data-i18n="claim"></button></div>
+<div class="banner offline" id="offline-banner" hidden><span data-i18n="offline"></span></div>
+<main>
+  <div class="layout">
+    <section class="panel rundown" aria-labelledby="rundown-title">
+      <header class="rundown-header">
+        <div class="section-label"><i class="dot"></i> <span data-i18n="rundown.label"></span></div>
+        <div class="title-row">
+          <div><h1 id="rundown-title">—</h1><div class="subtitle"><span id="queue-path"></span><span aria-hidden="true" id="sep" hidden>·</span><span id="last-read"></span></div></div>
+          <div class="tools"><button class="ghost" id="reload" data-i18n="reload">↻ Releer</button><button class="primary" id="queue-open" data-i18n="queue.open">Leer escaleta</button></div>
+        </div>
+      </header>
+      <div class="table-tools"><label class="filter"><input type="checkbox" id="hide-no-video"> <span data-i18n="filter.novideo"></span></label><span class="count" id="row-count"></span></div>
+      <div class="alert" id="error" role="alert" hidden><strong data-i18n="failed.title"></strong><span id="error-text"></span><button id="error-check" data-i18n="check"></button></div>
+      <div class="table-wrap">
+        <table aria-label="Escaleta" tabindex="0" id="rundown-table">
+          <colgroup><col class="cursor"><col class="page"><col><col class="duration"><col class="video"><col class="media"><col class="chan"><col class="state"></colgroup>
+          <thead><tr><th aria-label="Cursor"></th><th data-i18n="col.page"></th><th data-i18n="col.title"></th><th data-i18n="col.duration"></th><th>VideoID</th><th data-i18n="col.video"></th><th data-i18n="col.channel"></th><th>Playout</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p class="note" id="empty" style="padding:22px" data-i18n="rundown.empty"></p>
+      </div>
+      <div class="table-bottom">
+        <div class="keys"><span><kbd>↑</kbd> <kbd>↓</kbd> <span data-i18n="key.move"></span></span><span><kbd>↵ Return</kbd> <span data-i18n="key.take"></span></span><span><kbd data-i18n="key.space"></kbd> <span data-i18n="key.stop"></span></span><span><kbd>B</kbd> Browsing</span></div>
+        <button class="primary" id="take"><span data-i18n="take"></span> <span aria-hidden="true">↵</span></button>
+      </div>
+    </section>
+    <aside class="side" aria-label="Control">
+      <section class="panel">
+        <header class="side-heading"><h2 data-i18n="outputs"></h2><span class="section-caption">A / B</span></header>
+        <div class="channel-list" id="channels"></div>
+      </section>
+      <section class="panel">
+        <header class="side-heading"><h2 data-i18n="browse.title"></h2><span class="section-caption" id="review-label"></span></header>
+        <div class="browse-content">
+          <div class="preview empty" id="preview"><span id="preview-message" data-i18n="browse.hint"></span><img id="preview-img" alt="Preview" hidden><span class="preview-tag" id="preview-tag" hidden>REVIEW</span></div>
+          <div class="preview-info"><strong id="browse-title"></strong><span class="tc" id="browse-duration">—</span></div>
+          <input type="range" id="pos" min="0" max="100" value="0" aria-label="Posición" disabled>
+          <div class="timeline">
+            <div class="track"><div class="range-fill" id="fill"></div></div>
+            <input aria-label="IN" type="range" min="0" max="100" value="0" id="in-mark" disabled>
+            <input aria-label="OUT" type="range" min="0" max="100" value="100" id="out-mark" disabled>
+          </div>
+          <div class="marks"><span>IN <b id="in-value">—</b></span><span><span data-i18n="browse.pos"></span> <b id="pos-value">—</b></span><span>OUT <b id="out-value">—</b></span></div>
+          <div class="browse-tools"><button id="set-in" data-i18n="browse.setin"></button><button id="set-out" data-i18n="browse.setout"></button><button id="reset-marks" data-i18n="browse.reset"></button></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+  <footer class="footer"><span class="who" id="who"></span><span id="feedback" role="status" aria-live="polite"></span><span class="who" id="version"></span></footer>
+</main>
+
+<dialog class="modal login" id="login">
+  <form id="login-form">
+    <div class="dialog-head"><div><div class="brand"><span class="mark" aria-hidden="true">▶</span>NextCommand</div><p class="subtitle" data-i18n="login.sub"></p></div><button type="button" class="ghost" data-close aria-label="×">✕</button></div>
+    <div class="dialog-body">
+      <label class="field"><span data-i18n="login.server"></span> <input id="server-input" required autocomplete="off"></label>
+      <label class="field"><span data-i18n="login.user"></span> <input id="user-input" required autocomplete="username"></label>
+      <label class="field"><span data-i18n="login.pass"></span> <input id="pass-input" type="password" required autocomplete="current-password"></label>
+      <p class="note" data-i18n="login.note"></p>
+      <p class="note" id="login-error" role="alert" style="color:var(--red)" hidden></p>
+    </div>
+    <div class="dialog-footer"><button class="primary" type="submit" data-i18n="login.enter"></button></div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="queue-dialog">
+  <div class="dialog-head"><div><h2 data-i18n="queue.open"></h2><p class="subtitle" data-i18n="queue.sub"></p></div><button class="ghost" data-close aria-label="×">✕</button></div>
+  <div class="dialog-body">
+    <div class="crumbs" id="crumbs"></div>
+    <label class="field"><span data-i18n="queue.search"></span> <input id="queue-search" autocomplete="off"></label>
+    <div class="queue-list" id="queue-list" role="listbox"></div>
+    <p class="note" id="queue-error" role="alert" style="color:var(--red)" hidden></p>
+  </div>
+  <div class="dialog-footer"><button class="ghost" data-close data-i18n="cancel"></button><button class="primary" id="queue-load" data-i18n="queue.load" disabled></button></div>
+</dialog>
+
+<dialog class="modal" id="config">
+  <form id="config-form">
+    <div class="dialog-head"><div><h2 data-i18n="config.title"></h2><p class="subtitle" data-i18n="config.sub"></p></div><button type="button" class="ghost" data-close aria-label="×">✕</button></div>
+    <div class="dialog-body">
+      <div class="section-label">Stream IO</div>
+      <div class="field-grid"><label class="field"><span data-i18n="config.name"></span><input id="stream-name" required maxlength="64"></label><label class="field">Host<input id="stream-host" placeholder="10.0.0.26"></label></div>
+      <label class="field">OCIP <input id="stream-port" type="number" min="1" max="65535"></label>
+      <div class="section-label" data-i18n="config.channels"></div>
+      <div class="config-row"><div>Playlist A<small data-i18n="config.a"></small></div><input id="map-a" list="channel-list" aria-label="A"></div>
+      <div class="config-row"><div>Playlist B<small data-i18n="config.b"></small></div><input id="map-b" list="channel-list" aria-label="B"></div>
+      <div class="config-row"><div>Browsing<small data-i18n="config.r"></small></div><input id="map-r" list="channel-list" aria-label="Browsing"></div>
+      <datalist id="channel-list"></datalist>
+      <div class="section-label">iNEWS</div>
+      <label class="field"><span data-i18n="config.ws"></span><input id="ws-url" required></label>
+      <div class="field-grid"><label class="field"><span data-i18n="config.inews_server"></span><input id="inews-server"></label><label class="field"><span data-i18n="config.vfield"></span><input id="video-field" required></label></div>
+      <label class="filter"><input type="checkbox" id="allow-commands"> <span data-i18n="config.allow"></span></label>
+      <p class="note" data-i18n="config.allow_note"></p>
+      <p class="note" id="config-error" role="alert" style="color:var(--red)" hidden></p>
+    </div>
+    <div class="dialog-footer"><button type="button" class="ghost" data-close data-i18n="cancel"></button><button class="primary" type="submit" data-i18n="config.save"></button></div>
+  </form>
+</dialog>
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

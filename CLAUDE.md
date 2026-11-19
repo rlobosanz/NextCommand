@@ -14,8 +14,21 @@ NextCommand: controlador de playout de Avid Stream IO para el control de realiza
 - Las pruebas usan el Stream IO simulado; nunca equipos reales. Las guías OCIP de Avid son propietarias: no se añaden al repo.
 - Los resultados de F0 (`f0-resultados/`) no se versionan.
 
+## Estructura
+
+- `nextcommand/`: `ocip.py` (cliente), `streamio.py` (órdenes), `playout.py` (motor A/B), `rundown.py`, `inews_service.py` + `inews/` (copia de inewsbrowser, solo lectura), `api.py` (FastAPI + WebSocket), `sim/` (simuladores).
+- `static/`: interfaz sin build (`js/i18n.js` con ES y EN siempre completas; colores como tokens en `style.css`).
+- Un solo worker. Un controlador (cabecera `X-Client-Id`); el resto son visores. `allow_commands` desactivado por defecto.
+
 ## Probar en local
 
 ```bash
-python3 -m unittest discover -s tests
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m unittest discover -s tests
+for f in static/js/*.js; do node --check --input-type=module < "$f"; done
+docker compose config --quiet
 ```
+
+## Versiones
+
+Actualizar `VERSION`, `__version__` de `nextcommand/__init__.py`, la etiqueta de imagen de `compose.yaml` y añadir la entrada al principio de `CHANGELOG.md` (`## vX.Y.Z — AAAA-MM-DD`). Si cambian puerto, ruta de salud o comandos, actualizar `portal.json`.

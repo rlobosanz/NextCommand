@@ -210,7 +210,8 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
         snap = engine.snapshot()
         lease.expire()
         snap["control"] = {"you": lease.holder == cid, "taken": lease.holder is not None}
-        snap["inews"] = {**inews.public(), "last_queue": app_state["last_queue"]}
+        snap["inews"] = {**inews.public(), "last_queue": app_state["last_queue"],
+                          "default_server": cfg.data["inews"]["server"]}
         snap["simulator"] = simulator is not None
         snap["version_app"] = __version__
         return snap

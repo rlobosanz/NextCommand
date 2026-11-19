@@ -1,0 +1,18 @@
+name: nextcommand
+services:
+  nextcommand:
+    build: .
+    image: nextcommand:0.1.0
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Permite `NC_SIMULATOR=1 docker compose up`; sin variable en la shell, vale lo de .env (o 0).
+      NC_SIMULATOR: ${NC_SIMULATOR:-0}
+    ports:
+      - "${NC_BIND:-127.0.0.1}:9054:9054"
+    volumes:
+      - nextcommand-data:/data
+    restart: unless-stopped
+volumes:
+  nextcommand-data:
