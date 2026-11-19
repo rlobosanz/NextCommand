@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from fake_streamio import FakeStreamIO  # noqa: E402
+from nextcommand.sim.streamio import FakeStreamIO  # noqa: E402
 from nextcommand.config import ConfigStore, Settings  # noqa: E402
 from nextcommand.errors import AppError  # noqa: E402
 from nextcommand.playout import Engine  # noqa: E402

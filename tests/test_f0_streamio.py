@@ -6,10 +6,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-sys.path.insert(0, str(ROOT / "tests"))
+sys.path.insert(0, str(ROOT))
 
 import f0_streamio  # noqa: E402
-from fake_streamio import FakeStreamIO  # noqa: E402
+from nextcommand.sim.streamio import FakeStreamIO  # noqa: E402
 
 READ_VERBS = {"Server/List", "Channel/Get", "Item/Get"}
 

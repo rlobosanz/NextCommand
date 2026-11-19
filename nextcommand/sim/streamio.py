@@ -1,4 +1,4 @@
-"""Stream IO simulado para las pruebas de NextCommand (OCIP sobre TCP y preview JPEG por HTTP).
+"""Stream IO simulado (pruebas y demostración con NC_SIMULATOR=1) (OCIP sobre TCP y preview JPEG por HTTP).
 
 Datos ficticios. Responde como Stream IO: Ack, Result..., Finished, con ResponseId.
 El vídeo avanza con el reloj según la velocidad del canal y se congela al llegar al OUT del cue.
