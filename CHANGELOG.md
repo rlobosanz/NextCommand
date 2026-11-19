@@ -1,5 +1,11 @@
 # Cambios
 
+## v0.1.4 — 2026-11-19
+
+- Inicio de sesión en iNEWS: tras `Connect` se confirma la sesión con `IsConnected` antes de la primera llamada, y un «sin permiso» en los 15 s siguientes a conectar se reintenta una vez tras 1 s. Arregla el «Tu usuario no tiene permiso» del primer intento que obligaba a conectar dos veces (mismo arreglo que iNewsBrowser v0.1.1).
+- Un fallo de `Connect` ya nunca se presenta como «sin permiso».
+- Los faults de iNEWS se escriben en el registro del contenedor, y los avisos «sin permiso» y «error de iNEWS» muestran el texto original de iNEWS.
+
 ## v0.1.3 — 2026-11-19
 
 - La interfaz ocupa el alto de la ventana: ya no hay scroll en el panel derecho y solo la escaleta lleva scroll (cabecera de columnas fija).

@@ -7,6 +7,7 @@ sin actividad para liberar la licencia.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any, Awaitable, Callable, TypeVar
 
@@ -19,11 +20,16 @@ from .inews.soap import InewsFault, InewsUnavailable, SoapClient
 
 T = TypeVar("T")
 BLOCK = 20
+LOG = logging.getLogger("nextcommand.inews_service")
+FRESH_WINDOW_S = 15.0  # tras Connect, un «sin permiso» se reintenta una vez dentro de esta ventana
+FRESH_RETRY_S = 1.0
 
 
 def map_fault(e: InewsFault) -> AppError:
+    LOG.warning("Fault de iNEWS en %s: %s: %s", e.operation, e.kind, e.message)
     msg = e.message.lower()
-    if e.kind == "ConnectionFault":
+    if e.operation == "Connect" or e.kind == "ConnectionFault":
+        # Un fallo de Connect nunca es «sin permiso»: es credenciales, licencias o servidor.
         if e.operation == "Connect":
             if "licen" in msg:
                 return AppError("no_license", 503, "No hay licencias de iNEWS libres.", e.message)
@@ -50,6 +56,7 @@ class InewsService:
         self.last_used = time.monotonic()
         self.expired = False
         self._password: str | None = None
+        self.fresh_until = 0.0
         self.forms: dict[str, list[dict[str, Any]]] = {}
 
     @property
@@ -73,6 +80,7 @@ class InewsService:
         self.soap, self.ws_url, self.server, self.user = soap, ws_url, server, user
         self._password, self.expired, self.forms = password, False, {}
         self.connected_at, self.last_used = time.time(), time.monotonic()
+        self.fresh_until = time.monotonic() + FRESH_WINDOW_S
 
     async def disconnect(self) -> None:
         soap, self.soap, self._password = self.soap, None, None
@@ -96,7 +104,16 @@ class InewsService:
                 return await fn(Inews(self.soap))
             except InewsFault as e:
                 if e.kind != "ConnectionFault":
-                    raise map_fault(e) from e
+                    err = map_fault(e)
+                    if err.code != "forbidden" or time.monotonic() > self.fresh_until:
+                        raise err from e
+                    # Justo tras Connect, iNEWS puede negar el permiso a la primera llamada: se reintenta una vez.
+                    self.fresh_until = 0.0
+                    await asyncio.sleep(FRESH_RETRY_S)
+                    try:
+                        return await fn(Inews(self.soap))
+                    except InewsFault as e2:
+                        raise map_fault(e2) from e2
                 if not await self._reconnect():
                     raise AppError("session_expired", 401, "La sesión de iNEWS ha caducado.", e.message) from e
                 try:
@@ -111,6 +128,7 @@ class InewsService:
         self.soap.reset_cookies()
         try:
             await Inews(self.soap).connect(self.user, self._password, self.server)
+            self.fresh_until = time.monotonic() + FRESH_WINDOW_S
             return True
         except Exception:  # noqa: BLE001
             self.expired, self._password = True, None
