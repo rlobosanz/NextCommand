@@ -120,7 +120,7 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
     inews = InewsService(inews_transport)
     lease = Lease()
     state_path = settings.data_dir / "state.json"
-    app_state: dict[str, Any] = {"last_queue": read_json(state_path, {}).get("last_queue", "")}
+    app_state: dict[str, Any] = {"last_queue": "" if simulator is not None else read_json(state_path, {}).get("last_queue", "")}
     http = httpx.AsyncClient(timeout=2.5)
 
     async def verifier(row) -> str | None:
@@ -317,7 +317,8 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
         engine.set_rundown(rd)
         app_state["last_queue"] = path
         try:
-            write_atomic(state_path, {"last_queue": path})
+            if simulator is None:  # la demo no deja rastro en el volumen de datos
+                write_atomic(state_path, {"last_queue": path})
         except OSError:
             LOG.warning("No se pudo guardar la última escaleta")
 

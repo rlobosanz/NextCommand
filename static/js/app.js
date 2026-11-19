@@ -343,7 +343,11 @@ async function loadTree(path) {
     treePath = path
     treeItems = out.children
     renderTree()
-  } catch (e) { $("queue-error").textContent = errorText(e); $("queue-error").hidden = false }
+  } catch (e) {
+    if (path) { pickedQueue = ""; return loadTree("") }  // la última carpeta ya no existe: se vuelve a la raíz
+    $("queue-error").textContent = errorText(e)
+    $("queue-error").hidden = false
+  }
 }
 function renderTree() {
   const parts = treePath ? treePath.split(".") : []
