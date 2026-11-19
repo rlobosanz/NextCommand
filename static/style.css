@@ -160,3 +160,13 @@ kbd{border:1px solid #43516a;background:#1b2636;color:#e2edff;border-radius:5px;
 .side-heading button.ghost{padding:3px 9px;font-size:12px}
 .panel.collapsed .browse-content{display:none}
 .panel.collapsed .side-heading{border-bottom:0}
+
+/* salidas más compactas: miniatura más pequeña y textos menores */
+.slot-preview{width:min(100%,220px)}
+.channel{padding:8px 10px}
+.channel-name{font-size:14px}.channel-token{font-size:13px}
+.media-title{font-size:12.5px;margin-top:6px}
+.timers{gap:8px;margin-top:6px}.timers small{font-size:9px}.timers b{font:650 15px ui-monospace,monospace}
+.actions{margin-top:6px}.actions button{padding:4px 5px;font-size:11px}
+.channel .message{font-size:11px}
+.state-pill{font-size:10px;padding:3px 6px}

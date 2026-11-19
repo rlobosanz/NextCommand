@@ -1,5 +1,9 @@
 # Cambios
 
+## v0.1.2 — 2026-11-19
+
+- Salidas A/B más compactas: miniatura, tiempos y botones más pequeños, y el panel derecho se puede estrechar hasta 220 px.
+
 ## v0.1.1 — 2026-11-19
 
 - Take (Return o botón) actúa sobre la fila del cursor, solo si tiene clip online. Si la salida que le toca tiene otro clip cargado, se expulsa, se prepara el de la fila y se emite. Una fila ya en antena no se vuelve a lanzar.

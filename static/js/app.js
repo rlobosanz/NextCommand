@@ -337,7 +337,7 @@ function setBrowseHidden(value) {
   try { localStorage.setItem("nc-browse-hidden", value ? "1" : "") } catch { /* sin almacenamiento */ }
 }
 function setSideWidth(px, save = true) {
-  const w = Math.max(300, Math.min(760, Math.round(px)))
+  const w = Math.max(220, Math.min(760, Math.round(px)))
   document.querySelector(".layout").style.setProperty("--side-w", w + "px")
   if (save) { try { localStorage.setItem("nc-side-w", String(w)) } catch { /* sin almacenamiento */ } }
   return w
