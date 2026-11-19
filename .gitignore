@@ -1,0 +1,4 @@
+f0-resultados/
+__pycache__/
+.venv/
+.env
