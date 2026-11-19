@@ -80,6 +80,20 @@ const stories = () => (state?.rows || []).filter(r => r.kind === "story")
 const hideNoVideo = () => $("hide-no-video").checked
 const visibleRows = () => (state?.rows || []).filter(r => r.kind === "break" || !hideNoVideo() || r.video_id)
 const rowByKey = key => (state?.rows || []).find(r => r.key === key)
+function takeAllowed() {
+  const r = rowByKey(cursor)
+  return canCommand() && !anyPending() && !state.failure && Boolean(r) && r.kind === "story" && r.media === "available" && !["air", "paused", "pending"].includes(r.state)
+}
+async function takeCursor() {
+  if (!state || !takeAllowed()) return
+  const key = cursor
+  if (!(await act("POST", "/api/playout/take", { row_key: key }))) return
+  // el cursor baja a la siguiente fila con clip online (entre las visibles)
+  const vis = visibleRows()
+  const i = vis.findIndex(r => r.key === key)
+  const next = vis.slice(i + 1).find(r => r.kind === "story" && r.media === "available")
+  if (next) { cursor = next.key; rowsSig = ""; render(); document.querySelector("#rows tr.selected")?.scrollIntoView({ block: "nearest" }) }
+}
 
 function ensureCursor() {
   const vis = visibleRows().filter(r => r.kind === "story")
@@ -118,7 +132,7 @@ function renderRundown() {
   $("reload").disabled = !control() || !rd || !state.inews.connected
   $("queue-open").disabled = !control() || !state.inews.connected
   $("config-open").disabled = !control()
-  $("take").disabled = !canCommand() || anyPending() || Boolean(state.failure) || !state.rows.some(r => r.next)
+  $("take").disabled = !takeAllowed()
   const err = $("error")
   err.hidden = !state.failure
   if (state.failure) $("error-text").textContent = `${state.failure.slot}: ${state.failure.message}`
@@ -162,6 +176,7 @@ function buildCards() {
         h("div", { class: "channel-name" }, h("span", { class: "channel-code channel-token", text: name }), h("span", { class: "channel-physical" })),
         h("span", { class: "channel-state" })),
       h("div", { class: "media-title" }, h("span", { class: "current-title" }), h("span", { class: "current-id" })),
+      h("div", { class: "slot-preview", hidden: true }, h("img", { alt: "" })),
       h("div", { class: "timers" }, h("div", {}, h("small", { "data-i18n": "elapsed" }), h("b", { class: "elapsed", text: "—" })), h("div", {}, h("small", { "data-i18n": "remaining" }), h("b", { class: "remaining", text: "—" }))),
       h("div", { class: "message", hidden: true }),
       h("div", { class: "actions" },
@@ -187,6 +202,7 @@ function renderSlots() {
     card.querySelector(".channel-state").replaceChildren(pill(s.state))
     card.querySelector(".current-title").textContent = s.row_key ? s.title : t("slot.empty")
     card.querySelector(".current-id").textContent = s.video_id || "—"
+    card.querySelector(".slot-preview").hidden = !["ready", "air", "paused", "ended"].includes(s.state)
     const msg = card.querySelector(".message")
     const text = s.message || (s.locked ? `🔒 ${s.locker}` : "")
     msg.hidden = !text
@@ -288,16 +304,69 @@ function wireBrowse() {
   $("set-out").addEventListener("click", () => { const m = b().marks, p = b().position || 0; if (p > m[0]) saveMarks(b().row_key, m[0], p) })
   $("reset-marks").addEventListener("click", () => saveMarks(b().row_key, 0, Math.max(1, b().length - 1)))
 
-  // preview JPEG: se pide la siguiente imagen cuando la anterior terminó (sin acumular peticiones)
-  let busy = false
-  setInterval(() => {
-    if (busy || !state?.browse?.preview || document.hidden) return
-    busy = true
-    const img = new Image()
-    img.onload = () => { $("preview-img").src = img.src; busy = false }
-    img.onerror = () => { busy = false }
-    img.src = `/api/preview/browse?t=${Date.now()}`
-  }, 350)
+  // previews JPEG: se pide la siguiente imagen cuando la anterior terminó (sin acumular peticiones)
+  const feed = (role, target, period, active) => {
+    let busy = false, last = 0
+    setInterval(() => {
+      const wait = typeof period === "function" ? period() : period
+      if (busy || !state || document.hidden || !active() || performance.now() - last < wait) return
+      busy = true
+      last = performance.now()
+      const img = new Image()
+      img.onload = () => { target().src = img.src; busy = false }
+      img.onerror = () => { busy = false }
+      img.src = `/api/preview/${role}?t=${Date.now()}`
+    }, 200)
+  }
+  feed("browse", () => $("preview-img"), 350, () => Boolean(state.browse?.preview) && !browseHidden)
+  for (const name of ["A", "B"]) {
+    feed(name.toLowerCase(), () => cardState[name].querySelector(".slot-preview img"),
+      () => (state.slots[name].state === "air" ? 500 : 2000),
+      () => ["ready", "air", "paused", "ended"].includes(state.slots[name].state))
+  }
+}
+
+// ---------- panel derecho: ancho y Browsing ocultable ----------
+
+let browseHidden = false
+function setBrowseHidden(value) {
+  browseHidden = value
+  $("browse-panel").classList.toggle("collapsed", value)
+  $("browse-toggle").textContent = t(value ? "browse.show" : "browse.hide")
+  $("browse-toggle").setAttribute("aria-expanded", String(!value))
+  try { localStorage.setItem("nc-browse-hidden", value ? "1" : "") } catch { /* sin almacenamiento */ }
+}
+function setSideWidth(px, save = true) {
+  const w = Math.max(300, Math.min(760, Math.round(px)))
+  document.querySelector(".layout").style.setProperty("--side-w", w + "px")
+  if (save) { try { localStorage.setItem("nc-side-w", String(w)) } catch { /* sin almacenamiento */ } }
+  return w
+}
+function wirePanel() {
+  try { const w = Number(localStorage.getItem("nc-side-w")); if (w) setSideWidth(w, false) } catch { /* sin almacenamiento */ }
+  try { browseHidden = Boolean(localStorage.getItem("nc-browse-hidden")) } catch { /* sin almacenamiento */ }
+  setBrowseHidden(browseHidden)
+  $("browse-toggle").addEventListener("click", () => setBrowseHidden(!browseHidden))
+  const bar = $("resizer")
+  bar.addEventListener("pointerdown", e => {
+    bar.setPointerCapture(e.pointerId)
+    bar.classList.add("dragging")
+    const move = ev => setSideWidth(document.documentElement.clientWidth - ev.clientX - 28 - 8, false)
+    const up = () => {
+      bar.classList.remove("dragging")
+      bar.removeEventListener("pointermove", move)
+      bar.removeEventListener("pointerup", up)
+      setSideWidth(parseInt(getComputedStyle(document.querySelector(".layout")).getPropertyValue("--side-w")) || 420)
+    }
+    bar.addEventListener("pointermove", move)
+    bar.addEventListener("pointerup", up)
+  })
+  bar.addEventListener("keydown", e => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
+    e.preventDefault()
+    const cur = $("channels").parentElement.getBoundingClientRect().width
+    setSideWidth(cur + (e.key === "ArrowLeft" ? 24 : -24))
+  })
 }
 
 // ---------- diálogos ----------
@@ -437,15 +506,21 @@ function moveCursor(dir) {
   document.querySelector("#rows tr.selected")?.scrollIntoView({ block: "nearest" })
 }
 
+async function openBrowse(key) {
+  if (browseHidden) setBrowseHidden(false)
+  return act("POST", "/api/browse/open", { row_key: key })
+}
+
 function wireInput() {
   document.addEventListener("keydown", e => {
     if (!state || dialogOpen() || e.ctrlKey || e.metaKey || e.altKey) return
     if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName) && !(document.activeElement.type === "checkbox" && e.key !== " ")) return
+    if (document.activeElement?.tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) return
     if (e.key === "ArrowDown") { e.preventDefault(); moveCursor(1) }
     else if (e.key === "ArrowUp") { e.preventDefault(); moveCursor(-1) }
-    else if (e.key === "Enter" && canCommand()) { e.preventDefault(); if (!$("take").disabled) act("POST", "/api/playout/take", {}) }
+    else if (e.key === "Enter" && canCommand()) { e.preventDefault(); takeCursor() }
     else if (e.key === " " && canCommand()) { e.preventDefault(); if (cursor) act("POST", "/api/playout/stop", { row_key: cursor }) }
-    else if ((e.key === "b" || e.key === "B") && canCommand() && cursor) { e.preventDefault(); act("POST", "/api/browse/open", { row_key: cursor }) }
+    else if ((e.key === "b" || e.key === "B") && canCommand() && cursor) { e.preventDefault(); openBrowse(cursor) }
   })
   $("rows").addEventListener("click", e => {
     const tr = e.target.closest("tr[data-key]")
@@ -454,9 +529,9 @@ function wireInput() {
   $("rows").addEventListener("dblclick", e => {
     const tr = e.target.closest("tr[data-key]")
     const row = tr && rowByKey(tr.dataset.key)
-    if (row?.kind === "story" && canCommand()) act("POST", "/api/browse/open", { row_key: row.key })
+    if (row?.kind === "story" && canCommand()) openBrowse(row.key)
   })
-  $("take").addEventListener("click", () => act("POST", "/api/playout/take", {}))
+  $("take").addEventListener("click", takeCursor)
   $("error-check").addEventListener("click", async () => { $("error-check").textContent = t("checking"); await act("POST", "/api/playout/check", {}); $("error-check").textContent = t("check") })
   $("reload").addEventListener("click", () => act("POST", "/api/rundown/reload", {}, t("ok.read")))
   $("queue-open").addEventListener("click", openQueueDialog)
@@ -469,7 +544,7 @@ function wireInput() {
     await act("POST", "/api/control/claim", { force })
   })
   for (const b of document.querySelectorAll("[data-close]")) b.addEventListener("click", () => b.closest("dialog").close())
-  $("lang").addEventListener("change", () => { setLang($("lang").value); translateDom(); rowsSig = ""; render() })
+  $("lang").addEventListener("change", () => { setLang($("lang").value); translateDom(); setBrowseHidden(browseHidden); rowsSig = ""; render() })
 }
 
 // ---------- ciclo principal ----------
@@ -508,7 +583,7 @@ function init() {
   translateDom()
   buildCards()
   translateDom()
-  wireLogin(); wireConfig(); wireBrowse(); wireInput()
+  wireLogin(); wireConfig(); wireBrowse(); wirePanel(); wireInput()
   setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("es-ES", { hour12: false }) }, 1000)
   setInterval(tickTimers, 100)
   connect()

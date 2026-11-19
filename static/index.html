@@ -45,14 +45,15 @@
         <button class="primary" id="take"><span data-i18n="take"></span> <span aria-hidden="true">↵</span></button>
       </div>
     </section>
+    <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ancho del panel"></div>
     <aside class="side" aria-label="Control">
       <section class="panel">
         <header class="side-heading"><h2 data-i18n="outputs"></h2><span class="section-caption">A / B</span></header>
         <div class="channel-list" id="channels"></div>
       </section>
-      <section class="panel">
-        <header class="side-heading"><h2 data-i18n="browse.title"></h2><span class="section-caption" id="review-label"></span></header>
-        <div class="browse-content">
+      <section class="panel" id="browse-panel">
+        <header class="side-heading"><h2 data-i18n="browse.title"></h2><span class="head-tools"><span class="section-caption" id="review-label"></span><button class="ghost" id="browse-toggle" aria-expanded="true" aria-controls="browse-body"></button></span></header>
+        <div class="browse-content" id="browse-body">
           <div class="preview empty" id="preview"><span id="preview-message" data-i18n="browse.hint"></span><img id="preview-img" alt="Preview" hidden><span class="preview-tag" id="preview-tag" hidden>REVIEW</span></div>
           <div class="preview-info"><strong id="browse-title"></strong><span class="tc" id="browse-duration">—</span></div>
           <input type="range" id="pos" min="0" max="100" value="0" aria-label="Posición" disabled>

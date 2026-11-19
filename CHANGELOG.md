@@ -1,5 +1,13 @@
 # Cambios
 
+## v0.1.1 — 2026-11-19
+
+- Take (Return o botón) actúa sobre la fila del cursor, solo si tiene clip online. Si la salida que le toca tiene otro clip cargado, se expulsa, se prepara el de la fila y se emite. Una fila ya en antena no se vuelve a lanzar.
+- Tras el Take, el cursor baja solo a la siguiente fila con clip online. La precarga pasa a ser la fila siguiente a la tomada.
+- Panel derecho redimensionable (arrastrando la barra o con ←/→), con el ancho recordado.
+- El visor de Browsing se puede ocultar; se muestra solo al abrir un clip.
+- Miniatura en vivo (JPEG) de las salidas A y B mientras tienen clip cargado.
+
 ## v0.1.0 — 2026-11-19
 
 Primera versión de NextCommand (V1).

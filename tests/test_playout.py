@@ -142,5 +142,35 @@ class EngineTests(EngineBase):
         await self.until(lambda: self.state("A") == "ready")
 
 
+class TakeOnCursorTests(EngineBase):
+    async def test_take_on_cursor_row_ejects_stale_precue(self):
+        self.engine.set_rundown(make_rundown("VID1", "VID2", "VID10", "VID1"))
+        await self.engine.take()                       # A en antena con la fila 0
+        await self.until(lambda: self.state("B") == "ready")
+        self.assertEqual(self.engine.slots["B"].row_key, "SHOW.TEST/1")
+        await self.engine.take("SHOW.TEST/2")          # el cursor está en la fila 2
+        self.assertEqual(self.engine.slots["B"].row_key, "SHOW.TEST/2")
+        self.assertEqual(self.state("B"), "air")
+        self.assertIn("Channel/Eject", self.fake.verbs())
+        self.assertEqual(len([c for c in self.fake.cues.values() if c["channel"] == "c-out2"]), 1)
+        self.assertEqual(self.engine.last_index, 2)
+
+    async def test_precue_follows_cursor_take(self):
+        self.engine.set_rundown(make_rundown("VID1", "VID2", "VID10"))
+        await self.engine.take("SHOW.TEST/1")
+        self.assertEqual(self.engine.slots["A"].row_key, "SHOW.TEST/1")
+        await self.until(lambda: self.engine.slots["B"].row_key == "SHOW.TEST/2" and self.state("B") == "ready")
+
+    async def test_take_row_on_air_or_offline_is_refused(self):
+        self.engine.set_rundown(make_rundown("VID1", "VID2", None))
+        await self.engine.take("SHOW.TEST/0")
+        with self.assertRaises(AppError) as ctx:
+            await self.engine.take("SHOW.TEST/0")
+        self.assertEqual(ctx.exception.code, "row_on_air")
+        with self.assertRaises(AppError) as ctx:
+            await self.engine.take("SHOW.TEST/2")
+        self.assertEqual(ctx.exception.code, "not_playable")
+
+
 if __name__ == "__main__":
     unittest.main()

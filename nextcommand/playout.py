@@ -438,6 +438,12 @@ class Engine:
         role = ROLE[name]
         chan, st = await self._fresh(role)
         self._check_lock(st, "Play")
+        if slot.handle and slot.state in ("ready", "ended"):
+            # se descarga el clip que tenía esta salida antes de preparar el nuevo
+            try:
+                await self.get_sio().eject(chan)
+            except OcipError as exc:
+                raise self._fail(slot, "eject_failed", ocip_text(exc)) from exc
         marks = self.marks_for(row)
         slot.row_key, slot.title, slot.video_id, slot.item_id = row.key, row.title, row.video_id, row.media.item_id
         slot.channel, slot.marks, slot.handle, slot.taken, slot.error = chan.short_id, marks, "", False, None
@@ -501,21 +507,45 @@ class Engine:
                 raise AppError("not_found", 404, "La fila no existe.")
             await self._cue(name, row)
 
-    async def take(self) -> None:
+    async def take(self, row_key: str | None = None) -> None:
+        """Take sobre la fila indicada (la del cursor) o, sin fila, sobre lo preparado / la siguiente.
+
+        Con fila: si ya está preparada se emite; si no, se descarga lo que tenga la salida que le toca
+        (la que no está en antena), se prepara este clip y se emite. Solo filas con clip online."""
         async with self._lock:
             self._guard_ready()
             self._guard_no_failure()
-            slot = self.armed()
-            if slot is None:
-                row = self.next_row()
-                if row is None:
-                    raise AppError("no_next", 409, "No quedan filas reproducibles.")
-                name = self.next_slot()
-                if self.slots[name].state in ("air", "paused"):
-                    raise AppError("no_free_output", 409, "Las dos salidas están en antena.")
-                await self._cue(name, row)
-                slot = self.slots[name]
+            if row_key is not None:
+                slot = await self._slot_for_row(row_key)
+            else:
+                slot = self.armed()
+                if slot is None:
+                    row = self.next_row()
+                    if row is None:
+                        raise AppError("no_next", 409, "No quedan filas reproducibles.")
+                    name = self.next_slot()
+                    if self.slots[name].state in ("air", "paused"):
+                        raise AppError("no_free_output", 409, "Las dos salidas están en antena.")
+                    await self._cue(name, row)
+                    slot = self.slots[name]
             await self._take_slot(slot)
+
+    async def _slot_for_row(self, row_key: str) -> Slot:
+        row = self.row_for(row_key)
+        if row is None or row.kind != "story":
+            raise AppError("not_found", 404, "La fila no existe.")
+        if not row.playable:
+            raise AppError("not_playable", 409, "La fila del cursor no tiene un clip online.")
+        loaded = next((s for s in self.slots.values() if s.row_key == row.key and s.state in ("ready", "air", "paused")), None)
+        if loaded is not None:
+            if loaded.state == "ready":
+                return loaded
+            raise AppError("row_on_air", 409, f"La fila ya está en antena en la salida {loaded.name}.")
+        name = self.next_slot()
+        if self.slots[name].state in ("air", "paused", "pending"):
+            raise AppError("no_free_output", 409, "Las dos salidas están en antena.")
+        await self._cue(name, row)
+        return self.slots[name]
 
     async def _take_slot(self, slot: Slot) -> None:
         await self._speed(slot, 100, "play")
@@ -608,7 +638,7 @@ class Engine:
                     return
                 if target.state in ("air", "paused", "pending", "failed"):
                     return  # la otra salida sigue ocupada: se reintenta en el siguiente sondeo
-                if target.state == "ready":
+                if target.state == "ready" and target.row_key == row.key:
                     self.want_precue = False
                     return
                 self.want_precue = False

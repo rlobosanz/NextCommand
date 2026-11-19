@@ -2,12 +2,12 @@
 
 Controlador de canales de playout de Avid Stream IO para el control de realización de un informativo, conceptualmente similar a MediaCentral Command. Lee la escaleta de iNEWS (solo lectura) y prepara y lanza sus piezas en Stream IO por OCIP.
 
-Estado: **V1 (v0.1.0)**. El alcance acordado está en el documento «NextCommand · Alcance y arquitectura v1» y las conclusiones de F0 en `docs/f0-conclusiones.md`.
+Estado: **V1 (v0.1.1)**. El alcance acordado está en el documento «NextCommand · Alcance y arquitectura v1» y las conclusiones de F0 en `docs/f0-conclusiones.md`.
 
 ## V1 · Qué hace
 
 - Lee una escaleta de iNEWS (solo lectura; usuario y contraseña en la interfaz, solo en memoria) y enlaza cada VideoID con su clip en Stream IO (TapeId exacto).
-- Dos salidas A/B con alternancia fija: la siguiente fila va a la salida libre y se precarga sola. **Return** = Take, **Espacio** = parar la fila del cursor, **↑/↓** = cursor, **B** (o doble clic) = Browsing.
+- Dos salidas A/B con alternancia fija: la siguiente fila va a la salida libre y se precarga sola. **Return** = Take de la fila del cursor (el cursor baja solo a la siguiente con clip online), **Espacio** = parar la fila del cursor, **↑/↓** = cursor, **B** (o doble clic) = Browsing.
 - Visor de Browsing (canal Review, preview JPEG) con IN/OUT arrastrables. IN/OUT viven solo en NextCommand (`data/marks.json`) y viajan en el PlayInit; nunca se escriben en el clip.
 - Un controlador y el resto de clientes como visores. Sin bloqueos OCIP.
 - Las órdenes a Stream IO vienen **desactivadas** (Configuración → «Permitir órdenes»).

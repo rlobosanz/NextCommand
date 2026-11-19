@@ -50,6 +50,10 @@ class SlotIn(BaseModel):
     slot: str
 
 
+class TakeIn(BaseModel):
+    row_key: str | None = None
+
+
 class CueIn(BaseModel):
     slot: str
     row_key: str
@@ -364,9 +368,9 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
     # ---- playout ----
 
     @app.post("/api/playout/take")
-    async def take(request: Request):
+    async def take(request: Request, body: TakeIn | None = None):
         controller(request)
-        await engine.take()
+        await engine.take(body.row_key if body else None)
         return {"ok": True}
 
     @app.post("/api/playout/cue")
