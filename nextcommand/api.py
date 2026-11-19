@@ -23,10 +23,11 @@ from pydantic import BaseModel
 from . import __version__
 from .config import ConfigStore, Settings, read_json, write_atomic
 from .errors import AppError
+from .follow import Follower
 from .inews_service import InewsService
 from .ocip import OcipError
 from .playout import Engine
-from .rundown import Rundown, build_rows, resolve_media, video_field_from_form
+from .rundown import Rundown, build_rows, resolve_media, row_keys, video_field_from_form
 from .streamio import StreamIO
 
 LOG = logging.getLogger("nextcommand")
@@ -149,11 +150,24 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
     engine = Engine(cfg, settings.data_dir, verifier=verifier, poll_interval=settings.poll_interval,
                     token=settings.ocip_token, streamio_factory=streamio_factory)
 
+    async def resolve(rows) -> None:
+        async def find(tape: str):
+            return await engine.get_sio().find_tape(tape)
+        try:
+            engine.get_sio()
+            await resolve_media(rows, find)
+        except OcipError:
+            await resolve_media(rows, _unreachable)
+
+    follower = Follower(inews, engine, resolve, lambda: cfg.data["fields"]["video_id"],
+                        settings.follow_interval, settings.follow_full_every)
+
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
         if simulator is not None:
             await simulator.setup(cfg)
         engine.start()
+        follower.start()
 
         async def reaper():
             while True:
@@ -165,6 +179,7 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
             yield
         finally:
             task.cancel()
+            await follower.stop()
             await engine.shutdown()
             await inews.disconnect()
             await http.aclose()
@@ -174,6 +189,7 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
     app = FastAPI(title="NextCommand", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json",
                   lifespan=lifespan)
     app.state.engine, app.state.cfg, app.state.inews, app.state.lease = engine, cfg, inews, lease
+    app.state.follower = follower
 
     # ---- guardas ----
 
@@ -216,6 +232,7 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
         snap["control"] = {"you": lease.holder == cid, "taken": lease.holder is not None}
         snap["inews"] = {**inews.public(), "last_queue": app_state["last_queue"],
                           "default_server": cfg.data["inews"]["server"]}
+        snap["follow"] = follower.public()
         snap["simulator"] = simulator is not None
         snap["version_app"] = __version__
         return snap
@@ -223,7 +240,7 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
     @app.get("/api/health")
     async def health():
         return {"ok": True, "version": __version__, "simulator": simulator is not None,
-                "commands": engine.commands_allowed()}
+                "commands": engine.commands_allowed(), "follow": follower.public()["state"]}
 
     @app.get("/api/state")
     async def get_state(request: Request):
@@ -305,20 +322,13 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
         path = path.strip().strip(".").upper()
         if not path:
             raise AppError("no_queue", 400, "Elige una escaleta.")
-        cols, raw = await inews.read_queue(path)
-        field = video_field_from_form(cols, cfg.data["fields"]["video_id"])
-        rows, floated = build_rows(path, raw, field)
-        rd = Rundown(path, rows, time.time(), field, floated)
-
-        async def find(tape: str):
-            return await engine.get_sio().find_tape(tape)
-
-        try:
-            engine.get_sio()
-            await resolve_media(rows, find)
-        except OcipError:
-            await resolve_media(rows, _unreachable)
-        engine.set_rundown(rd)
+        async with follower.lock:
+            cols, raw, records = await inews.read_queue(path, with_records=True)
+            field = video_field_from_form(cols, cfg.data["fields"]["video_id"])
+            rows, floated = build_rows(path, raw, field, row_keys(path, records))
+            await resolve(rows)
+            engine.set_rundown(Rundown(path, rows, time.time(), field, floated))
+            await follower.adopt(path, raw, records)
         app_state["last_queue"] = path
         try:
             if simulator is None:  # la demo no deja rastro en el volumen de datos

@@ -147,8 +147,8 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_never_calls_forbidden_inews_ops(self):
         await self.login_and_read()
-        allowed = {"Connect", "Disconnect", "IsConnected", "GetFolderChildren", "GetQueuesForm", "SetCurrentQueue", "GetStories",
-                   "HasNext", "GetStory"}
+        allowed = {"Connect", "Disconnect", "IsConnected", "GetFolderChildren", "GetQueuesForm", "SetCurrentQueue",
+                   "GetStories", "HasNext", "GetStory", "GetQueueRecords"}
         self.assertTrue(set(self.sim.inews_app.state.sim.calls) <= allowed)
 
 

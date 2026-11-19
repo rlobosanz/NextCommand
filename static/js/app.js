@@ -122,6 +122,26 @@ function renderHeader() {
   $("who").textContent = control() ? (state.commands ? t("controller") : `${t("controller")} · ${t("commands.off")}`) : t("viewer")
 }
 
+function renderFollow(rd) {
+  const el = $("follow")
+  const f = state.follow
+  const hhmmss = (epoch) => new Date(epoch * 1000).toLocaleTimeString(getLang())
+  let text = ""
+  let tone = ""
+  if (rd && f && f.state !== "disabled") {
+    if (f.state === "ok") {
+      text = `● ${t("follow.live")}${f.changed_at ? ` · ${t("follow.changed")} ${hhmmss(f.changed_at)}` : ""}`
+      tone = "follow-ok"
+    } else {
+      text = `⚠ ${t("follow.stale")}${f.checked_at ? ` ${t("follow.since")} ${hhmmss(f.checked_at)}` : ""}${f.message ? ` · ${f.message}` : ""}`
+      tone = "follow-stale"
+    }
+  }
+  el.textContent = text
+  el.className = tone
+  el.hidden = !text
+}
+
 function renderRundown() {
   const rd = state.rundown
   const name = rd ? rd.path.split(".").pop() : "—"
@@ -129,6 +149,7 @@ function renderRundown() {
   $("queue-path").textContent = rd ? rd.path : ""
   $("sep").hidden = !rd
   $("last-read").textContent = rd ? `${t("read.at")} ${new Date(rd.read_at * 1000).toLocaleTimeString(getLang())}${rd.floated ? ` · ${rd.floated} ${t("floated")}` : ""}` : ""
+  renderFollow(rd)
   $("empty").hidden = Boolean(rd)
   $("reload").disabled = !control() || !rd || !state.inews.connected
   $("queue-open").disabled = !control() || !state.inews.connected

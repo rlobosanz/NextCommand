@@ -59,10 +59,21 @@ def story_nsml(page: str, title: str, video_id: str, is_break: bool, floated: bo
             '<body><p>Texto de ejemplo.</p></body></nsml:nsml>')
 
 
+_CLOCK = [1_793_284_493_000]
+
+
+def tick() -> int:
+    """MTime ficticio (ms epoch) que siempre avanza."""
+    _CLOCK[0] += 1000
+    return _CLOCK[0]
+
+
 @dataclass
 class SimStory:
     locator: str
     nsml: str
+    story_id: str = ""
+    mtime: int = field(default_factory=tick)
 
 
 @dataclass
@@ -71,6 +82,7 @@ class SimSession:
     queue: str | None = None
     deny_left: int = 0
     pos: int = 0
+    records_pos: int = 0
 
 
 @dataclass
@@ -82,8 +94,40 @@ class SimState:
     deny_after_connect: int = 0
 
     def set_video_id(self, queue: str, index: int, video_id: str) -> None:
+        self.set_field(queue, index, "video-id", video_id)
+
+    def set_field(self, queue: str, index: int, field_id: str, value: str) -> None:
         st = self.queues[queue][index]
-        st.nsml = re.sub(r'(<string id="video-id">)[^<]*(</string>)', rf"\g<1>{escape(video_id)}\g<2>", st.nsml)
+        st.nsml = re.sub(rf'(<string id="{field_id}">)[^<]*(</string>)', rf"\g<1>{escape(value)}\g<2>", st.nsml)
+        st.mtime = tick()
+
+    def set_flag(self, queue: str, index: int, flag: str, value: bool) -> None:
+        """flag: float | hold."""
+        st = self.queues[queue][index]
+        st.nsml = re.sub(rf'{flag}="(true|false)"', f'{flag}="{str(value).lower()}"', st.nsml)
+        st.mtime = tick()
+
+    def set_text(self, queue: str, index: int, text: str) -> None:
+        st = self.queues[queue][index]
+        st.nsml = re.sub(r"<body>.*?</body>", f"<body><p>{escape(text)}</p></body>", st.nsml, flags=re.S)
+        st.mtime = tick()
+
+    def move(self, queue: str, src: int, dst: int) -> None:
+        """Como en iNEWS real: la historia movida cambia de localizador, pero no de StoryID ni de MTime."""
+        q = self.queues[queue]
+        st = q.pop(src)
+        head, _, tail = st.locator.rpartition(".")
+        st.locator = f"{head}.{int(tail) + 1}"
+        q.insert(dst, st)
+
+    def insert(self, queue: str, index: int, page: str, title: str, video_id: str) -> SimStory:
+        n = 900 + len(self.calls) % 100 + sum(len(v) for v in self.queues.values())
+        st = SimStory(f"{300000 + n}.{n}.0", story_nsml(page, title, video_id, False, False, False, n), str(n))
+        self.queues[queue].insert(index, st)
+        return st
+
+    def delete(self, queue: str, index: int) -> SimStory:
+        return self.queues[queue].pop(index)
 
 
 def load_state() -> SimState:
@@ -92,8 +136,9 @@ def load_state() -> SimState:
         for c in children_:
             if c["type"] == "queue":
                 s.queues[c["path"]] = []
-    s.queues[MAIN_QUEUE] = [SimStory(f"{100000 + i}.{i}.0", story_nsml(*row, i)) for i, row in enumerate(ROWS)]
-    s.queues["PROGRAMAS.TELEDIARIO_21.ESCALETA"] = [SimStory(f"{200000 + i}.{i}.0", story_nsml(*row, i))
+    s.queues[MAIN_QUEUE] = [SimStory(f"{100000 + i}.{i}.0", story_nsml(*row, i), str(5000 + i))
+                            for i, row in enumerate(ROWS)]
+    s.queues["PROGRAMAS.TELEDIARIO_21.ESCALETA"] = [SimStory(f"{200000 + i}.{i}.0", story_nsml(*row, i), str(6000 + i))
                                                      for i, row in enumerate(ROWS[:4])]
     return s
 
@@ -191,9 +236,9 @@ def create_simulator(state: SimState | None = None) -> FastAPI:
             q = arg("QueueFullName").upper()
             if q not in all_queues:
                 return fault("SetCurrentQueueFault", f"Queue {q} does not exist", service)
-            sess.queue, sess.pos = q, 0
+            sess.queue, sess.pos, sess.records_pos = q, 0, 0
             return soap("")
-        if op in ("GetStories", "HasNext") and sess.queue is None:
+        if op in ("GetStories", "HasNext", "GetQueueRecords") and sess.queue is None:
             return fault(f"{op}Fault", "Current queue not set", service)
         if op == "GetStories":
             n, with_body = int(arg("NumberOfStoriesToGet") or 0), arg("IsStoryBodyIncluded") == "true"
@@ -202,6 +247,15 @@ def create_simulator(state: SimState | None = None) -> FastAPI:
             return resp(op, service, "".join(f"<Stories>{story_xml(sess.queue, s, with_body)}</Stories>" for s in items))
         if op == "HasNext":
             return resp(op, service, f"<HasNext>{'true' if sess.pos < len(state.queues[sess.queue]) else 'false'}</HasNext>")
+        if op == "GetQueueRecords":
+            if arg("Reset") == "true":
+                sess.records_pos = 0
+            n = min(int(arg("NumberOfRecordsToGet") or 0), 200)
+            items = state.queues[sess.queue][sess.records_pos:sess.records_pos + n]
+            sess.records_pos += len(items)
+            return resp(op, service, "".join(
+                f"<QueueRecord><QueueLocator>{s.locator}</QueueLocator><StoryID>{s.story_id}</StoryID>"
+                f"<MTime>{s.mtime}</MTime></QueueRecord>" for s in items))
         if op == "GetStory":
             q, loc = arg("QueueFullName").upper(), arg("QueueLocator")
             st = next((s for s in state.queues.get(q, []) if s.locator == loc), None)

@@ -2,7 +2,7 @@ name: nextcommand
 services:
   nextcommand:
     build: .
-    image: nextcommand:0.1.4
+    image: nextcommand:0.2.1
     env_file:
       - path: .env
         required: false
