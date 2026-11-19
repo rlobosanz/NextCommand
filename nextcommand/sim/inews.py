@@ -110,8 +110,12 @@ class SimState:
         st.mtime = tick()
 
     def move(self, queue: str, src: int, dst: int) -> None:
+        """Como en iNEWS real: la historia movida cambia de localizador, pero no de StoryID ni de MTime."""
         q = self.queues[queue]
-        q.insert(dst, q.pop(src))
+        st = q.pop(src)
+        head, _, tail = st.locator.rpartition(".")
+        st.locator = f"{head}.{int(tail) + 1}"
+        q.insert(dst, st)
 
     def insert(self, queue: str, index: int, page: str, title: str, video_id: str) -> SimStory:
         n = 900 + len(self.calls) % 100 + sum(len(v) for v in self.queues.values())

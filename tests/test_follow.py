@@ -102,10 +102,26 @@ class FollowTests(unittest.IsolatedAsyncioTestCase):
         key = self.row(await self.state(), "LIGA: JORNADA 12")["key"]
         self.data.move(MAIN_QUEUE, 9, 2)
         calls = await self.tick()
-        self.assertNotIn("GetStory", calls)  # solo cambia el orden: no hace falta releer nada
+        self.assertNotIn("GetStory", calls)  # nuevo localizador, mismo StoryID y MTime: no se relee nada
         rows = (await self.state())["rows"]
         self.assertEqual([r["title"] for r in rows][2], "LIGA: JORNADA 12")
         self.assertEqual(rows[2]["key"], key)
+        r = await self.post("/api/rundown/reload")  # una relectura completa conserva la identidad
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.row(await self.state(), "LIGA: JORNADA 12")["key"], key)
+
+    async def test_moves_keep_prepared_row_or_repoint_precue(self):
+        await self.take_and_precue()
+        self.data.move(MAIN_QUEUE, 9, 4)  # LIGA pasa por debajo de INCENDIO (preparada en B)
+        self.data.move(MAIN_QUEUE, 1, 0)  # TITULARES (en antena) sube: cambia de localizador
+        await self.tick()
+        await asyncio.sleep(0.3)
+        state = await self.state()
+        self.assertEqual((state["slots"]["B"]["state"], state["slots"]["B"]["title"]), ("ready", "INCENDIO EN EL PUERTO"))
+        self.assertEqual((state["slots"]["A"]["state"], state["slots"]["A"]["message"]), ("air", ""))
+        self.data.move(MAIN_QUEUE, 2, 6)  # INCENDIO baja: la precarga pasa a la nueva siguiente
+        await self.tick()
+        await self.until(lambda s: s["slots"]["B"]["state"] == "ready" and s["slots"]["B"]["title"] == "PLENO DEL CONGRESO")
 
     async def test_new_locator_same_story_keeps_identity(self):
         key = self.row(await self.state(), "EL TIEMPO")["key"]

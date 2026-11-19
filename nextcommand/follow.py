@@ -15,8 +15,9 @@ Reconciliación completa (formulario + todas las cabeceras + registros) al carga
 de iNEWS, tras un fallo o lectura incoherente, cuando hay muchos cambios a la vez y cada `full_every` segundos
 como red de seguridad (por si algún cambio de marcas no moviera el MTime).
 
-Identidad de fila: cola/localizador. Si una historia reaparece con otro localizador y el mismo StoryID, conserva
-su identidad (IN/OUT, salida asignada). Cola y cursor viven en la sesión SOAP: todo pasa por el lock de la sesión.
+Identidad de fila: cola/StoryID. En iNEWS real (prueba del 19-11-2026) mover historias cambia su localizador (lleva
+la posición) pero no su StoryID; una historia movida con el mismo MTime no se relee, se reutiliza su cabecera.
+Cola y cursor viven en la sesión SOAP: todo pasa por el lock de la sesión.
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ from typing import Any, Awaitable, Callable
 from .errors import AppError
 from .inews.inews import QueueRecord
 from .inews_service import InewsService
-from .rundown import Row, Rundown, build_rows, video_field_from_form
+from .rundown import Row, Rundown, build_rows, row_keys, video_field_from_form
 
 LOG = logging.getLogger("nextcommand")
 MAX_PARTIAL = 12        # más historias cambiadas que esto: lectura completa (es más rápida que GetStory una a una)
@@ -46,7 +47,6 @@ class Follower:
         self.path = ""
         self.records: list[QueueRecord] = []
         self.nsml: dict[str, str] = {}
-        self.keys: dict[str, str] = {}
         self.generation = -1
         self.dirty = False
         self.full_at = 0.0
@@ -134,7 +134,6 @@ class Follower:
         self.path = path
         self.records = records
         self.nsml = dict(raw)
-        self.keys = {}
         self.generation = self.inews.generation
         self.full_at = time.monotonic()
         self.dirty = {r.locator for r in records} != set(self.nsml)  # algo cambió mientras se leía
@@ -152,13 +151,24 @@ class Follower:
         if self.inews.generation != self.generation or len({r.locator for r in records}) != len(records):
             await self.full()
             return
-        old = {r.locator: r for r in self.records}
-        changed = [r.locator for r in records
-                   if r.locator not in old or r.mtime is None or old[r.locator].mtime != r.mtime]
-        same_order = [r.locator for r in records] == [r.locator for r in self.records]
-        if not changed and same_order:
+        same = [(r.locator, r.story_id, r.mtime) for r in records] == [(r.locator, r.story_id, r.mtime)
+                                                                        for r in self.records]
+        if same:
             self._ok()
             return
+        # cabecera ya conocida: mismo localizador o misma historia movida (StoryID), con el mismo MTime
+        by_loc = {r.locator: r for r in self.records}
+        by_sid = {r.story_id: r for r in self.records if r.story_id}
+        nsml: dict[str, str] = {}
+        changed = []
+        for r in records:
+            prev = by_loc.get(r.locator)
+            if prev is None or prev.story_id != r.story_id:
+                prev = by_sid.get(r.story_id) if r.story_id else None
+            if prev is not None and r.mtime is not None and prev.mtime == r.mtime and prev.locator in self.nsml:
+                nsml[r.locator] = self.nsml[prev.locator]
+            else:
+                changed.append(r.locator)
         if len(changed) > MAX_PARTIAL:
             await self.full()
             return
@@ -166,7 +176,7 @@ class Follower:
         if any(v is None for v in got.values()):
             await self.full()  # se borró mientras se leía
             return
-        nsml = {**self.nsml, **got}
+        nsml.update(got)
         await self._apply(records, [(r.locator, nsml[r.locator]) for r in records])
 
     async def full(self) -> None:
@@ -182,8 +192,7 @@ class Follower:
         if rd is None or rd.path != self.path:
             return
         field = field or rd.video_field
-        self._carry_keys(records)
-        rows, floated = build_rows(self.path, raw, field, self.keys)
+        rows, floated = build_rows(self.path, raw, field, row_keys(self.path, records))
         before = {r.key: r for r in rd.rows}
         unresolved = []
         for row in rows:
@@ -204,13 +213,3 @@ class Follower:
             self.changes += 1
             self.engine.set_rundown(Rundown(self.path, rows, rd.read_at, field, floated))
         self._ok()
-
-    def _carry_keys(self, records: list[QueueRecord]) -> None:
-        """Una historia que vuelve con otro localizador y el mismo StoryID conserva su identidad de fila."""
-        now = {r.locator for r in records}
-        gone = {r.story_id: r.locator for r in self.records if r.locator not in now and r.story_id}
-        for r in records:
-            if r.locator not in self.nsml and r.story_id in gone:
-                old_loc = gone.pop(r.story_id)
-                self.keys[r.locator] = self.keys.get(old_loc, f"{self.path}/{old_loc}")
-        self.keys = {loc: key for loc, key in self.keys.items() if loc in now}

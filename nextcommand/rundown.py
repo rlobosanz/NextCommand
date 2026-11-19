@@ -22,7 +22,7 @@ class Media:
 
 @dataclass
 class Row:
-    key: str                  # cola/localizador: identidad estable aunque la fila cambie de posición
+    key: str                  # cola/#StoryID: identidad estable aunque la fila se mueva (el localizador cambia)
     index: int
     kind: str                 # story | break
     locator: str
@@ -69,11 +69,16 @@ def video_field_from_form(columns: list[dict[str, Any]], fallback: str) -> str:
     return fallback
 
 
+def row_keys(path: str, records) -> dict[str, str]:
+    """Identidad de cada fila: cola/#StoryID. El localizador cambia al mover historias; el StoryID no."""
+    return {r.locator: f"{path}/#{r.story_id}" for r in records if r.story_id}
+
+
 def build_rows(path: str, raw: list[tuple[str, str]], video_field: str,
                keys: dict[str, str] | None = None) -> tuple[list[Row], int]:
     """raw = [(localizador, NSML de cabecera)]. Excluye las flotadas; los breaks quedan como separadores.
 
-    `keys` da la identidad de las filas cuyo localizador cambió (misma historia); por defecto, cola/localizador."""
+    `keys` (localizador → identidad, ver `row_keys`); sin entrada, cola/localizador."""
     keys = keys or {}
     rows: list[Row] = []
     floated = 0

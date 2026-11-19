@@ -27,7 +27,7 @@ from .follow import Follower
 from .inews_service import InewsService
 from .ocip import OcipError
 from .playout import Engine
-from .rundown import Rundown, build_rows, resolve_media, video_field_from_form
+from .rundown import Rundown, build_rows, resolve_media, row_keys, video_field_from_form
 from .streamio import StreamIO
 
 LOG = logging.getLogger("nextcommand")
@@ -325,7 +325,7 @@ def create_app(settings: Settings | None = None, inews_transport: httpx.AsyncBas
         async with follower.lock:
             cols, raw, records = await inews.read_queue(path, with_records=True)
             field = video_field_from_form(cols, cfg.data["fields"]["video_id"])
-            rows, floated = build_rows(path, raw, field)
+            rows, floated = build_rows(path, raw, field, row_keys(path, records))
             await resolve(rows)
             engine.set_rundown(Rundown(path, rows, time.time(), field, floated))
             await follower.adopt(path, raw, records)

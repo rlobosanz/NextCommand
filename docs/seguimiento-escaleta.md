@@ -1,6 +1,6 @@
 # Seguimiento de la escaleta en tiempo real
 
-Estado: implementado en v0.2.0 y probado con los simuladores. **Pendiente de validar contra iNEWS real** con `tools/seguimiento_inews.py`.
+Estado: implementado en v0.2.0. Comportamiento de iNEWS comprobado con `tools/seguimiento_inews.py` contra el servidor real (19-11-2026); NextCommand completo pendiente de probar en directo.
 
 ## ¿Notifica iNEWS los cambios?
 
@@ -10,7 +10,13 @@ El WSDL del servidor real (descargado el 19-11-2026 con el script) publica en `i
 - `GetChangedQueues()` → `ChangedQueueNames[]`: «colas que han cambiado desde que se registraron y desde la última vez que se hizo esta petición». Es **sondeo**: el cliente pregunta; solo dice *qué cola* cambió, no qué historias.
 - `RegisterNotificationService(ServiceURL)`: este sí es **push**. El web service de iNEWS llama a una URL nuestra que implemente `inewsnotification.wsdl`. Exige que el servidor de Web Services (10.0.0.9) llegue por red a NextCommand, y montar un servicio SOAP de recepción. Hoy NextCommand corre en el Mac por VPN, así que no se usa.
 
-Plan: cuando el script confirme que `GetChangedQueues` avisa de verdad (y con qué retraso), usarlo como aviso barato cada segundo y leer QueueRecords solo cuando diga que la cola cambió (más una comprobación periódica por si acaso). El diseño de abajo no cambia.
+Resultado de la prueba real (19-11-2026, escaleta de 16 historias): `WatchQueueForChanges` se acepta, pero `GetChangedQueues` devolvió siempre la lista vacía aunque se reordenaron, flotaron y borraron historias. No sirve como aviso: NextCommand no lo usa.
+
+Lo que sí confirmó la prueba:
+
+- `GetQueueRecords` de 16 historias: ~110 ms. Cabeceras completas: ~325 ms.
+- Flotar mueve el MTime de esa historia; borrar se ve como baja. La lectura completa periódica no encontró cambios ocultos.
+- **Mover historias cambia su localizador** (lleva la posición) pero no su StoryID ni su MTime. Por eso la identidad de fila es cola/StoryID y una historia movida no se relee.
 
 ## Cómo funciona
 
@@ -31,7 +37,7 @@ Todo pasa por el lock de la sesión de iNEWS (cola y cursor son de la sesión SO
 - Lo que está en antena nunca se interrumpe: si su fila cambia o desaparece, solo se muestra un aviso en la salida.
 - Fila preparada con VideoID cambiado o borrada: el cue se invalida al instante (no hay Take) y, con las órdenes permitidas, se vuelve a resolver solo: se expulsa el clip viejo y se prepara el nuevo, o se libera la salida y se precarga la siguiente fila. Con las órdenes desactivadas queda en «Fallido» hasta «Comprobar salida».
 - Si entra una fila nueva antes de la precargada, la precarga automática se reapunta. Una salida preparada a mano no se toca.
-- Identidad de fila: cola/localizador. Si una historia reaparece con otro localizador y el mismo StoryID, conserva su identidad (IN/OUT y salida).
+- Identidad de fila: cola/StoryID (estable al mover; el localizador no lo es). Los IN/OUT guardados con la v0.1 (por localizador) no se conservan.
 - Flotadas ocultas, retenidas visibles (como en V1).
 - Si se borra la última fila lanzada, la siguiente es la primera posterior que siga existiendo.
 
@@ -55,4 +61,4 @@ Qué hay que mirar:
 - Sección 1: si existen `WatchQueueForChanges` / `GetChangedQueues` y sus parámetros.
 - «MTime distintos en la cola»: en F0 todas las historias de la escaleta de pruebas tenían el mismo MTime. Hay que confirmar que cada edición mueve el MTime de esa historia.
 - «AVISO: cambios que NO movieron el MTime»: si aparece (por ejemplo al flotar), bajar `NC_FOLLOW_FULL_EVERY` a pocos segundos.
-- «Localizador nuevo para la misma historia»: si al mover una historia cambia su localizador.
+- «Localizador nuevo para la misma historia»: confirmado, mover cambia el localizador.
