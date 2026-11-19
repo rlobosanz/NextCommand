@@ -1,50 +1,158 @@
 {
-  "id": "nextcommand",
-  "section": "develop",
-  "group": "Avid Lab",
-  "target": "mac",
-  "name": "NextCommand",
-  "description": {
-    "es": "Controlador de playout de Avid Stream IO para el control de realización: lee la escaleta de iNEWS (solo lectura), enlaza cada VideoID con su clip y lanza las piezas en dos salidas A/B con visor de Browsing e IN/OUT.",
-    "en": "Avid Stream IO playout controller for news production control: reads the iNEWS rundown (read-only), links each VideoID to its clip and plays pieces on two A/B outputs with a Browsing viewer and IN/OUT."
-  },
-  "note": {
-    "es": "Las órdenes a Stream IO vienen desactivadas: actívalas en Configuración. Sin equipos reales, arranca con NC_SIMULATOR=1 (contraseña de iNEWS demo).",
-    "en": "Commands to Stream IO are off by default: enable them in Settings. Without real equipment, start with NC_SIMULATOR=1 (iNEWS password demo)."
-  },
-  "address": "http://127.0.0.1:9054/",
-  "badge": {"es": "Local · Git · iNEWS solo lectura", "en": "Local · Git · iNEWS read-only"},
-  "mark": "NC",
-  "health": "http://localhost:9054/api/health",
-  "links": [
-    {"label": {"es": "Abrir NextCommand", "en": "Open NextCommand"}, "url": "http://127.0.0.1:9054/"},
-    {"label": {"es": "Repositorio", "en": "Repository"}, "url": "https://github.com/rlobosanz/NextCommand"}
-  ],
-  "commands": [
+  "entries": [
     {
-      "label": {"es": "Actualizar NextCommand", "en": "Update NextCommand"},
-      "run": "cd \"{proyectos}/NextCommand\" && git pull && docker compose up -d --build",
-      "description": {"es": "Mac · baja la última versión de la rama actual, reconstruye y recrea el contenedor.", "en": "Mac · pull the latest version of the current branch, rebuild and recreate the container."}
+      "id": "nextcommand",
+      "section": "develop",
+      "group": "Avid Lab",
+      "target": "mac",
+      "name": "NextCommand",
+      "description": {
+        "es": "Controlador de playout de Avid Stream IO para el control de realización: lee la escaleta de iNEWS (solo lectura), enlaza cada VideoID con su clip y lanza las piezas en dos salidas A/B con visor de Browsing e IN/OUT.",
+        "en": "Avid Stream IO playout controller for news production control: reads the iNEWS rundown (read-only), links each VideoID to its clip and plays pieces on two A/B outputs with a Browsing viewer and IN/OUT."
+      },
+      "note": {
+        "es": "Las órdenes a Stream IO vienen desactivadas: actívalas en Configuración. Sin equipos reales, arranca con NC_SIMULATOR=1 (contraseña de iNEWS demo).",
+        "en": "Commands to Stream IO are off by default: enable them in Settings. Without real equipment, start with NC_SIMULATOR=1 (iNEWS password demo)."
+      },
+      "address": "http://127.0.0.1:9054/",
+      "badge": {
+        "es": "Local · Git · iNEWS solo lectura",
+        "en": "Local · Git · iNEWS read-only"
+      },
+      "mark": "NC",
+      "health": "http://localhost:9054/api/health",
+      "links": [
+        {
+          "label": {
+            "es": "Abrir NextCommand",
+            "en": "Open NextCommand"
+          },
+          "url": "http://127.0.0.1:9054/"
+        },
+        {
+          "label": {
+            "es": "Guía de NextCommand",
+            "en": "NextCommand guide"
+          },
+          "url": "/docs/nextcommand.html"
+        },
+        {
+          "label": {
+            "es": "Repositorio",
+            "en": "Repository"
+          },
+          "url": "https://github.com/rlobosanz/NextCommand"
+        }
+      ],
+      "commands": [
+        {
+          "label": {
+            "es": "Actualizar NextCommand",
+            "en": "Update NextCommand"
+          },
+          "run": "cd \"{proyectos}/NextCommand\" && git pull && docker compose up -d --build",
+          "description": {
+            "es": "Mac · baja la última versión de la rama actual, reconstruye y recrea el contenedor.",
+            "en": "Mac · pull the latest version of the current branch, rebuild and recreate the container."
+          }
+        },
+        {
+          "label": {
+            "es": "Arrancar con el simulador",
+            "en": "Start with the simulator"
+          },
+          "run": "cd \"{proyectos}/NextCommand\" && NC_SIMULATOR=1 docker compose up -d --build",
+          "description": {
+            "es": "Mac · iNEWS y Stream IO ficticios; la contraseña de iNEWS es demo. Para volver a los equipos reales, usa Actualizar.",
+            "en": "Mac · fictional iNEWS and Stream IO; the iNEWS password is demo. To go back to real equipment, use Update."
+          }
+        },
+        {
+          "label": {
+            "es": "Comprobar API local",
+            "en": "Check local API"
+          },
+          "run": "curl -fsS --connect-timeout 5 http://127.0.0.1:9054/api/health",
+          "description": {
+            "es": "Mac · debe devolver ok, la versión y si está en modo simulador.",
+            "en": "Mac · returns ok, the version and whether the simulator is on."
+          }
+        },
+        {
+          "label": {
+            "es": "Estado de NextCommand",
+            "en": "NextCommand status"
+          },
+          "run": "cd \"{proyectos}/NextCommand\" && docker compose ps",
+          "description": {
+            "es": "Mac · consulta el contenedor de NextCommand.",
+            "en": "Mac · check the NextCommand container."
+          }
+        },
+        {
+          "label": {
+            "es": "Logs de NextCommand",
+            "en": "NextCommand logs"
+          },
+          "run": "cd \"{proyectos}/NextCommand\" && docker compose logs --tail 200 -f nextcommand",
+          "description": {
+            "es": "Mac · sigue el registro del contenedor; Ctrl+C cierra solo la consulta.",
+            "en": "Mac · follow the container log; Ctrl+C stops only the log view."
+          }
+        },
+        {
+          "label": {
+            "es": "Reiniciar NextCommand",
+            "en": "Restart NextCommand"
+          },
+          "run": "cd \"{proyectos}/NextCommand\" && docker compose restart nextcommand",
+          "description": {
+            "es": "Mac · reinicia el contenedor conservando configuración e IN/OUT. Cierra la sesión de iNEWS; no toca los cues de Stream IO.",
+            "en": "Mac · restart the container keeping settings and IN/OUT. Closes the iNEWS session; Stream IO cues are not touched."
+          }
+        },
+        {
+          "label": {
+            "es": "Detener NextCommand",
+            "en": "Stop NextCommand"
+          },
+          "run": "cd \"{proyectos}/NextCommand\" && docker compose stop nextcommand",
+          "description": {
+            "es": "Mac · detiene el contenedor y cierra la sesión de iNEWS. No toca los cues de Stream IO.",
+            "en": "Mac · stop the container and close the iNEWS session. Stream IO cues are not touched."
+          }
+        }
+      ]
     },
     {
-      "label": {"es": "Arrancar con el simulador", "en": "Start with the simulator"},
-      "run": "cd \"{proyectos}/NextCommand\" && NC_SIMULATOR=1 docker compose up -d --build",
-      "description": {"es": "Mac · iNEWS y Stream IO ficticios; la contraseña de iNEWS es demo. Para volver a los equipos reales, usa Actualizar.", "en": "Mac · fictional iNEWS and Stream IO; the iNEWS password is demo. To go back to real equipment, use Update."}
-    },
-    {
-      "label": {"es": "Comprobar API local", "en": "Check local API"},
-      "run": "curl -fsS --connect-timeout 5 http://127.0.0.1:9054/api/health",
-      "description": {"es": "Mac · debe devolver ok, la versión y si está en modo simulador.", "en": "Mac · returns ok, the version and whether the simulator is on."}
-    },
-    {
-      "label": {"es": "Logs de NextCommand", "en": "NextCommand logs"},
-      "run": "cd \"{proyectos}/NextCommand\" && docker compose logs --tail 200 -f nextcommand",
-      "description": {"es": "Mac · sigue el registro del contenedor; Ctrl+C cierra solo la consulta.", "en": "Mac · follow the container log; Ctrl+C stops only the log view."}
-    },
-    {
-      "label": {"es": "Detener NextCommand", "en": "Stop NextCommand"},
-      "run": "cd \"{proyectos}/NextCommand\" && docker compose stop nextcommand",
-      "description": {"es": "Mac · detiene el contenedor y cierra la sesión de iNEWS. No toca los cues de Stream IO.", "en": "Mac · stop the container and close the iNEWS session. Stream IO cues are not touched."}
+      "id": "doc-nextcommand",
+      "section": "docs",
+      "group": "Stream IO",
+      "target": "docs",
+      "name": {
+        "es": "NextCommand · instalación y operación",
+        "en": "NextCommand · installation and operation"
+      },
+      "description": {
+        "es": "Playout de Stream IO guiado por la escaleta de iNEWS: estado de versiones, arranque real y con simulador, teclado, reglas de seguridad, comandos y diagnóstico.",
+        "en": "Stream IO playout driven by the iNEWS rundown: version status, real and simulator start, keyboard, safety rules, commands and troubleshooting."
+      },
+      "links": [
+        {
+          "label": {
+            "es": "Leer",
+            "en": "Read"
+          },
+          "url": "/docs/nextcommand.html"
+        },
+        {
+          "label": {
+            "es": "Abrir NextCommand",
+            "en": "Open NextCommand"
+          },
+          "url": "http://127.0.0.1:9054/"
+        }
+      ]
     }
   ]
 }
